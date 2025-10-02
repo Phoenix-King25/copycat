@@ -84,7 +84,6 @@ body {
 .form-control:focus {
   outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--shadow-accent-glow);
 }
-/* NEW: Added styles for textarea */
 textarea.form-control {
   resize: vertical;
   min-height: 45px;
@@ -114,8 +113,7 @@ textarea.form-control {
 .message-header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
 .timestamp { color: var(--muted); font-size: 0.875rem; white-space: nowrap; }
 .message-body { word-wrap: break-word; color: var(--text); line-height: 1.5; }
-/* NEW: Styling for pre/code tags */
-.message-body pre { margin: 0; }
+.message-body pre { margin: 0; white-space: pre-wrap; } /* Ensures pre tag wraps content */
 .message-body pre, .message-body code { font-family: monospace; font-size: 0.9rem; }
 .clipboard-actions { display: flex; flex-direction: column; gap: 8px; margin-left: 12px; align-items: flex-end; }
 #toast-container { position: fixed; right: 24px; top: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 12px; }
@@ -201,7 +199,10 @@ textarea.form-control {
     }
 
     function escapeHTML(str) {
-      return str.replace(/[&<>"']/g, function(match) {
+      // This function is critical for security.
+      // It converts HTML special characters to their text equivalents.
+      // For example, '<' becomes '&lt;'
+      return str.toString().replace(/[&<>"']/g, function(match) {
         return {
           '&': '&amp;',
           '<': '&lt;',
@@ -237,26 +238,48 @@ textarea.form-control {
             console.error('Error fetching messages:', error);
             return;
         }
-        clipboardList.innerHTML = data.map(msg => `
-            <div class="list-item clipboard-item">
+        
+        // This is the SAFE WAY to render user content.
+        // 1. Clear the list.
+        clipboardList.innerHTML = ''; 
+
+        // 2. Loop through messages and build elements safely.
+        data.forEach(msg => {
+            // Create the main list item
+            const listItem = document.createElement('div');
+            listItem.className = 'list-item clipboard-item';
+            
+            // The content string with escaped HTML
+            // This ensures characters like ' are handled in the onclick attribute
+            const escapedContent = msg.content.replace(/`/g, '\\`').replace(/'/g, "\\'");
+
+            listItem.innerHTML = `
                 <div class="clipboard-content">
                     <div class="message-header">
                         <div class="timestamp">${formatTimestamp(msg.created_at)}</div>
                     </div>
-                    {/* CHANGED: Wrapped output in pre/code for better code formatting */}
-                    <div class="message-body"><pre><code>${escapeHTML(msg.content)}</code></pre></div>
+                    <div class="message-body">
+                        <pre><code></code></pre>
+                    </div>
                 </div>
                 <div class="clipboard-actions">
-                    <button class="btn btn-secondary btn-sm" onclick='copyText(\`${msg.content.replace(/`/g, '\\`')}\`)' title="Copy"><i data-feather="copy"></i></button>
+                    <button class="btn btn-secondary btn-sm" onclick='copyText(\`${escapedContent}\`)' title="Copy"><i data-feather="copy"></i></button>
                     <button class="btn btn-danger btn-sm" onclick="deleteMessage(${msg.id})" title="Delete"><i data-feather="trash-2"></i></button>
                 </div>
-            </div>
-        `).join('');
+            `;
+            
+            // 3. Set the content using .textContent to prevent HTML rendering. This is the key.
+            listItem.querySelector('.message-body code').textContent = msg.content;
+            
+            // 4. Append the fully constructed, safe element to the list.
+            clipboardList.appendChild(listItem);
+        });
+
         feather.replace();
     }
 
     async function shareMessage() {
-        const content = clipboardInput.value.trim();
+        const content = clipboardInput.value; // .trim() can remove leading spaces from code
         if (content) {
             clipboardInput.disabled = true;
             shareBtn.disabled = true;
@@ -295,6 +318,7 @@ textarea.form-control {
         }
         fileList.innerHTML = data.map(file => {
             const fileUrl = supabase.storage.from('files').getPublicUrl(file.name).data.publicUrl;
+            const escapedFileName = file.name.replace(/'/g, "\\'");
             return `
                 <li class="list-item">
                     <div class="file-info">
@@ -302,9 +326,9 @@ textarea.form-control {
                         <span>${escapeHTML(file.name)}</span>
                     </div>
                     <div class="file-actions">
-                        <a class="btn btn-primary btn-sm" href="${fileUrl}" download="${file.name}" title="Download"><i data-feather="download"></i></a>
+                        <a class="btn btn-primary btn-sm" href="${fileUrl}" download="${escapeHTML(file.name)}" title="Download"><i data-feather="download"></i></a>
                         <a class="btn btn-secondary btn-sm" href="${fileUrl}" target="_blank" title="View"><i data-feather="eye"></i></a>
-                        <button class="btn btn-danger btn-sm" onclick="deleteFile('${file.name.replace(/'/g, "\\'")}')" title="Delete"><i data-feather="trash-2"></i></button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteFile('${escapedFileName}')" title="Delete"><i data-feather="trash-2"></i></button>
                     </div>
                 </li>`;
         }).join('');
@@ -366,9 +390,8 @@ textarea.form-control {
             // Clipboard Listeners
             shareBtn.addEventListener('click', shareMessage);
             clipboardInput.addEventListener('keypress', (e) => {
-                // Modified to allow Shift+Enter for new lines
                 if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault(); // Prevent default Enter behavior (new line)
+                    e.preventDefault(); 
                     shareMessage();
                 }
             });
