@@ -129,34 +129,6 @@ textarea.form-control {
 }
 .toast.success { border-color: var(--success); }
 .toast.error { border-color: var(--danger); }
-
-/* NEW: Styles for the Confirmation Modal */
-.modal-overlay {
-  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-  background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(4px);
-  display: flex; align-items: center; justify-content: center;
-  z-index: 10000; opacity: 0; pointer-events: none;
-  transition: opacity 0.2s ease;
-}
-.modal-overlay.visible {
-  opacity: 1; pointer-events: auto;
-}
-.modal-content {
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: 16px; padding: 24px; max-width: 400px;
-  width: 90%; text-align: center;
-  transform: scale(0.95); transition: transform 0.2s ease;
-}
-.modal-overlay.visible .modal-content {
-  transform: scale(1);
-}
-#modal-text {
-  margin: 0; margin-bottom: 20px;
-  line-height: 1.6;
-}
-.modal-actions {
-  display: flex; justify-content: center; gap: 12px;
-}
 </style>
 </head>
 <body>
@@ -181,7 +153,6 @@ textarea.form-control {
   <div class="card">
     <div class="card-header"><i data-feather="upload-cloud"></i> File Hub</div>
     <div class="card-body">
-      <!-- FIXED: Removed inline onclick to prevent double-trigger issue -->
       <div id="drop-zone">
         <input id="file-input" type="file" multiple style="display:none">
         <i data-feather="upload" style="width:36px;height:36px"></i>
@@ -204,17 +175,6 @@ textarea.form-control {
 
 <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
 
-<!-- NEW: Custom Confirmation Modal HTML -->
-<div id="confirmation-modal" class="modal-overlay">
-    <div class="modal-content">
-        <p id="modal-text"></p>
-        <div class="modal-actions">
-            <button id="modal-cancel-btn" class="btn btn-secondary">Cancel</button>
-            <button id="modal-confirm-btn" class="btn btn-danger">Confirm</button>
-        </div>
-    </div>
-</div>
-
 <script>
     // --- DOM Elements ---
     const clipboardInput = document.getElementById('clipboardInput');
@@ -230,15 +190,8 @@ textarea.form-control {
     const resetFilesBtn = document.getElementById('resetFilesBtn');
     const uploadStatus = document.getElementById('upload-status');
     
-    // NEW: Modal DOM Elements
-    const modal = document.getElementById('confirmation-modal');
-    const modalText = document.getElementById('modal-text');
-    const modalConfirmBtn = document.getElementById('modal-confirm-btn');
-    const modalCancelBtn = document.getElementById('modal-cancel-btn');
-    
     let supabase;
     let currentMessageIndex = -1;
-    let confirmCallback = null; // To store the action for the modal
 
     // --- UTILITY FUNCTIONS ---
     function showToast(message, isError = false) {
@@ -283,18 +236,6 @@ textarea.form-control {
     function formatTimestamp(dateString) {
         const date = new Date(dateString);
         return date.toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
-    }
-
-    // NEW: Functions to handle the custom confirmation modal
-    function showConfirmation(message, onConfirm) {
-        modalText.textContent = message;
-        confirmCallback = onConfirm;
-        modal.classList.add('visible');
-    }
-
-    function hideConfirmation() {
-        modal.classList.remove('visible');
-        confirmCallback = null;
     }
 
     // --- CLIPBOARD FEATURE ---
@@ -382,17 +323,13 @@ textarea.form-control {
     }
 
     async function deleteMessage(id) {
-        showConfirmation('Are you sure you want to delete this message?', async () => {
-            const { error } = await supabase.from('messages').delete().eq('id', id);
-            if (error) showToast('Failed to delete message.', true);
-        });
+        const { error } = await supabase.from('messages').delete().eq('id', id);
+        if (error) showToast('Failed to delete message.', true);
     }
     
-    function resetClipboard() {
-        showConfirmation('Are you sure you want to delete all clipboard messages?', async () => {
-            const { data, error } = await supabase.from('messages').delete().neq('id', 0);
-            if (error) showToast('Failed to reset clipboard.', true);
-        });
+    async function resetClipboard() {
+        const { data, error } = await supabase.from('messages').delete().neq('id', 0);
+        if (error) showToast('Failed to reset clipboard.', true);
     }
 
     function selectNextMessage() {
@@ -451,28 +388,24 @@ textarea.form-control {
         }
     }
 
-    function deleteFile(fileName) {
-        showConfirmation(`Are you sure you want to delete ${fileName}?`, async () => {
-            const { error } = await supabase.storage.from('files').remove([fileName]);
-            if (error) showToast(`Failed to delete ${fileName}.`, true);
-        });
+    async function deleteFile(fileName) {
+        const { error } = await supabase.storage.from('files').remove([fileName]);
+        if (error) showToast(`Failed to delete ${fileName}.`, true);
     }
 
-    function resetFiles() {
-        showConfirmation('Are you sure you want to delete ALL files? This cannot be undone.', async () => {
-            const { data: files, error } = await supabase.storage.from('files').list();
-            if (error) {
-                showToast('Could not list files to delete.', true);
-                return;
-            }
-            if (files.length === 0) {
-                showToast('No files to delete.');
-                return;
-            }
-            const fileNames = files.map(file => file.name);
-            const { error: deleteError } = await supabase.storage.from('files').remove(fileNames);
-            if (deleteError) showToast('Failed to delete all files.', true);
-        });
+    async function resetFiles() {
+        const { data: files, error } = await supabase.storage.from('files').list();
+        if (error) {
+            showToast('Could not list files to delete.', true);
+            return;
+        }
+        if (files.length === 0) {
+            showToast('No files to delete.');
+            return;
+        }
+        const fileNames = files.map(file => file.name);
+        const { error: deleteError } = await supabase.storage.from('files').remove(fileNames);
+        if (deleteError) showToast('Failed to delete all files.', true);
     }
 
     // --- INITIALIZATION ---
@@ -503,7 +436,6 @@ textarea.form-control {
             resetClipboardBtn.addEventListener('click', resetClipboard);
             nextMessageBtn.addEventListener('click', selectNextMessage);
 
-            // FIXED: Event listener is now cleaner and more reliable
             dropZone.addEventListener('click', () => fileInput.click());
             fileInput.addEventListener('change', async (e) => {
                 if (e.target.files.length > 0) {
@@ -512,7 +444,7 @@ textarea.form-control {
                 }
             });
             dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
-            dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+            dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover');
             dropZone.addEventListener('drop', async (e) => {
                 e.preventDefault();
                 dropZone.classList.remove('dragover');
@@ -521,20 +453,6 @@ textarea.form-control {
                 }
             });
             resetFilesBtn.addEventListener('click', resetFiles);
-
-            // NEW: Modal event listeners
-            modalConfirmBtn.addEventListener('click', () => {
-                if (confirmCallback) {
-                    confirmCallback();
-                }
-                hideConfirmation();
-            });
-            modalCancelBtn.addEventListener('click', hideConfirmation);
-            modal.addEventListener('click', (e) => {
-                if (e.target === modal) { // only close if overlay is clicked
-                    hideConfirmation();
-                }
-            });
             
             // --- Realtime Subscriptions ---
             supabase.channel('public:messages')
