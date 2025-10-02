@@ -352,28 +352,49 @@ textarea.form-control {
     }
 
     // --- FILE HUB FEATURE ---
+    // FIXED: Rewrote this function to be safe from syntax errors caused by special characters in filenames.
     async function fetchFiles() {
         const { data, error } = await supabase.storage.from('files').list('', { sortBy: { column: 'created_at', order: 'desc' } });
         if (error) {
             console.error('Error listing files:', error);
             return;
         }
-        fileList.innerHTML = data.map(file => {
+
+        fileList.innerHTML = ''; // Clear the list before repopulating
+
+        data.forEach(file => {
+            const listItem = document.createElement('li');
+            listItem.className = 'list-item';
+
             const fileUrl = supabase.storage.from('files').getPublicUrl(file.name).data.publicUrl;
-            const escapedFileName = file.name.replace(/'/g, "\\'");
-            return `
-                <li class="list-item">
-                    <div class="file-info">
-                        <i data-feather="file-text"></i>
-                        <span>${escapeHTML(file.name)}</span>
-                    </div>
-                    <div class="file-actions">
-                        <a class="btn btn-primary btn-sm" href="${fileUrl}" download="${escapeHTML(file.name)}" title="Download"><i data-feather="download"></i></a>
-                        <a class="btn btn-secondary btn-sm" href="${fileUrl}" target="_blank" title="View"><i data-feather="eye"></i></a>
-                        <button class="btn btn-danger btn-sm" onclick="deleteFile('${escapedFileName}')" title="Delete"><i data-feather="trash-2"></i></button>
-                    </div>
-                </li>`;
-        }).join('');
+
+            // Create static HTML parts
+            listItem.innerHTML = `
+                <div class="file-info">
+                    <i data-feather="file-text"></i>
+                    <span></span>
+                </div>
+                <div class="file-actions">
+                    <a class="btn btn-primary btn-sm" href="${fileUrl}" title="Download"><i data-feather="download"></i></a>
+                    <a class="btn btn-secondary btn-sm" href="${fileUrl}" target="_blank" title="View"><i data-feather="eye"></i></a>
+                </div>
+            `;
+
+            // Safely set the file name and download attribute using textContent/setAttribute
+            listItem.querySelector('.file-info span').textContent = file.name;
+            listItem.querySelector('.file-actions a[title="Download"]').setAttribute('download', file.name);
+
+            // Create the delete button and attach its event listener programmatically
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'btn btn-danger btn-sm';
+            deleteBtn.title = 'Delete';
+            deleteBtn.innerHTML = `<i data-feather="trash-2"></i>`;
+            deleteBtn.onclick = () => deleteFile(file.name); // This is safe
+
+            listItem.querySelector('.file-actions').appendChild(deleteBtn);
+            fileList.appendChild(listItem);
+        });
+
         feather.replace();
     }
 
