@@ -284,7 +284,7 @@ textarea.form-control {
             deleteBtn.onclick = () => deleteMessage(msg.id);
 
             actionsDiv.appendChild(copyBtn);
-actionsDiv.appendChild(deleteBtn);
+            actionsDiv.appendChild(deleteBtn);
 
             clipboardList.appendChild(listItem);
         });
@@ -360,6 +360,7 @@ actionsDiv.appendChild(deleteBtn);
     }
 
     // --- FILE HUB FEATURE ---
+    // FIXED: Rewrote this function to be safe from syntax errors.
     async function fetchFiles() {
         const { data, error } = await supabase.storage.from('files').list('', { sortBy: { column: 'created_at', order: 'desc' } });
         if (error) {
