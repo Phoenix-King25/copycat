@@ -284,7 +284,7 @@ textarea.form-control {
             deleteBtn.onclick = () => deleteMessage(msg.id);
 
             actionsDiv.appendChild(copyBtn);
-            actionsDiv.appendChild(deleteBtn);
+actionsDiv.appendChild(deleteBtn);
 
             clipboardList.appendChild(listItem);
         });
@@ -324,12 +324,20 @@ textarea.form-control {
 
     async function deleteMessage(id) {
         const { error } = await supabase.from('messages').delete().eq('id', id);
-        if (error) showToast('Failed to delete message.', true);
+        if (error) {
+            showToast('Failed to delete message.', true);
+        } else {
+            showToast('Message deleted.');
+        }
     }
     
     async function resetClipboard() {
-        const { data, error } = await supabase.from('messages').delete().neq('id', 0);
-        if (error) showToast('Failed to reset clipboard.', true);
+        const { error } = await supabase.from('messages').delete().neq('id', 0);
+        if (error) {
+            showToast('Failed to reset clipboard.', true);
+        } else {
+            showToast('Clipboard cleared.');
+        }
     }
 
     function selectNextMessage() {
@@ -352,7 +360,6 @@ textarea.form-control {
     }
 
     // --- FILE HUB FEATURE ---
-    // FIXED: Rewrote this function to be safe from syntax errors caused by special characters in filenames.
     async function fetchFiles() {
         const { data, error } = await supabase.storage.from('files').list('', { sortBy: { column: 'created_at', order: 'desc' } });
         if (error) {
@@ -360,7 +367,7 @@ textarea.form-control {
             return;
         }
 
-        fileList.innerHTML = ''; // Clear the list before repopulating
+        fileList.innerHTML = ''; 
 
         data.forEach(file => {
             const listItem = document.createElement('li');
@@ -368,7 +375,6 @@ textarea.form-control {
 
             const fileUrl = supabase.storage.from('files').getPublicUrl(file.name).data.publicUrl;
 
-            // Create static HTML parts
             listItem.innerHTML = `
                 <div class="file-info">
                     <i data-feather="file-text"></i>
@@ -380,16 +386,14 @@ textarea.form-control {
                 </div>
             `;
 
-            // Safely set the file name and download attribute using textContent/setAttribute
             listItem.querySelector('.file-info span').textContent = file.name;
-            listItem.querySelector('.file-actions a[title="Download"]').setAttribute('download', file.name);
+            listItem.querySelector('a[title="Download"]').setAttribute('download', file.name);
 
-            // Create the delete button and attach its event listener programmatically
             const deleteBtn = document.createElement('button');
             deleteBtn.className = 'btn btn-danger btn-sm';
             deleteBtn.title = 'Delete';
             deleteBtn.innerHTML = `<i data-feather="trash-2"></i>`;
-            deleteBtn.onclick = () => deleteFile(file.name); // This is safe
+            deleteBtn.onclick = () => deleteFile(file.name);
 
             listItem.querySelector('.file-actions').appendChild(deleteBtn);
             fileList.appendChild(listItem);
@@ -411,7 +415,11 @@ textarea.form-control {
 
     async function deleteFile(fileName) {
         const { error } = await supabase.storage.from('files').remove([fileName]);
-        if (error) showToast(`Failed to delete ${fileName}.`, true);
+        if (error) {
+            showToast(`Failed to delete ${fileName}.`, true);
+        } else {
+            showToast(`Deleted ${fileName}.`);
+        }
     }
 
     async function resetFiles() {
@@ -426,7 +434,11 @@ textarea.form-control {
         }
         const fileNames = files.map(file => file.name);
         const { error: deleteError } = await supabase.storage.from('files').remove(fileNames);
-        if (deleteError) showToast('Failed to delete all files.', true);
+        if (deleteError) {
+            showToast('Failed to delete all files.', true);
+        } else {
+            showToast('All files have been deleted.');
+        }
     }
 
     // --- INITIALIZATION ---
@@ -499,4 +511,3 @@ textarea.form-control {
 </script>
 </body>
 </html>
-
