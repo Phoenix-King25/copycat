@@ -447,10 +447,10 @@ textarea.form-control {
     // --- REWRITTEN: Preview Logic ---
     async function showPreview(fileUrl, fileName) {
         const extension = fileName.split('.').pop().toLowerCase();
-        const officeExtensions = ['docx', 'docm', 'dotm', 'dotx', 'xlsx', 'xlsb', 'xls', 'xlsm', 'pptx', 'ppsx', 'ppt', 'pps', 'pptm', 'potm', 'ppam', 'potx', 'ppsm', 'csv'];
+        const officeExtensions = ['docx', 'docm', 'dotm', 'dotx', 'xlsx', 'xlsb', 'xls', 'xlsm', 'pptx', 'ppsx', 'ppt', 'pps', 'pptm', 'potm', 'ppam', 'potx', 'ppsm'];
         const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'];
         const codeExtensions = ['java', 'py', 'c', 'cpp', 'cs', 'rb', 'go', 'js', 'ts', 'html', 'css', 'xml', 'json', 'sh', 'bat'];
-        const textExtensions = ['txt', 'md'];
+        const textExtensions = ['txt', 'md', 'rtf'];
 
         const openPreviewTab = (content) => {
             const previewTab = window.open('about:blank', '_blank');
@@ -466,25 +466,35 @@ textarea.form-control {
                 window.open(officeUrl, '_blank');
             } else if (imageExtensions.includes(extension) || extension === 'pdf') {
                 openPreviewTab(`<body style="margin:0; background-color: #282c34;"><iframe src="${fileUrl}" frameborder="0" style="width:100%; height:100vh;"></iframe></body>`);
-            } else if (codeExtensions.includes(extension) || textExtensions.includes(extension)) {
+            } else if (codeExtensions.includes(extension) || textExtensions.includes(extension) || extension === 'csv') {
                 const response = await fetch(fileUrl);
                 const text = await response.text();
-                const content = `
-                    <html>
-                        <head>
-                            <title>Preview: ${fileName}</title>
-                            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css">
-                            <style>
-                                html, body { margin:0; padding:0; height:100%; font-family: monospace; background-color: #282c34; }
-                                pre { margin: 1em; }
-                            </style>
-                        </head>
-                        <body>
-                            <pre><code class="${extension}">${escapeHTML(text)}</code></pre>
-                            <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"><\/script>
-                            <script>hljs.highlightAll();<\/script>
-                        </body>
-                    </html>`;
+                let content;
+
+                if (extension === 'csv') {
+                    const rows = text.trim().split('\n').map(row => {
+                        const columns = row.split(',').map(col => `<td>${escapeHTML(col)}</td>`).join('');
+                        return `<tr>${columns}</tr>`;
+                    }).join('');
+                    content = `<html><head><title>Preview: ${fileName}</title><style>body{font-family:monospace;background-color:#282c34;color:#abb2bf;padding:1em;} table{width:100%;border-collapse:collapse;} td,th{border:1px solid #555;padding:8px;text-align:left;} th{background-color:#444;}</style></head><body><table>${rows}</table></body></html>`;
+                } else {
+                    content = `
+                        <html>
+                            <head>
+                                <title>Preview: ${fileName}</title>
+                                <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css">
+                                <style>
+                                    html, body { margin:0; padding:0; height:100%; font-family: monospace; background-color: #282c34; }
+                                    pre { margin: 1em; }
+                                </style>
+                            </head>
+                            <body>
+                                <pre><code class="${extension}">${escapeHTML(text)}</code></pre>
+                                <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"><\/script>
+                                <script>hljs.highlightAll();<\/script>
+                            </body>
+                        </html>`;
+                }
                 openPreviewTab(content);
             } else {
                  showToast("Preview not available for this file type.", true);
