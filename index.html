@@ -209,7 +209,7 @@ textarea.form-control {
         setTimeout(() => {
             div.style.transition = 'opacity 0.28s';
             div.style.opacity = '0';
-            setTimeout(() => div.remove(), 320);
+            setTimeout(() => div.remove(), 3200);
         }, 2200);
     }
 
@@ -244,7 +244,6 @@ textarea.form-control {
         return date.toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
     }
     
-    // Function to convert data URL to File object
     function dataURLtoFile(dataurl, filename) {
         var arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1],
             bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
@@ -254,16 +253,10 @@ textarea.form-control {
         return new File([u8arr], filename, {type:mime});
     }
 
-    // Function to get a file extension from a MIME type
     function getExtensionFromMimeType(mimeType) {
         const mimeMap = {
-            'image/jpeg': '.jpg',
-            'image/png': '.png',
-            'image/gif': '.gif',
-            'image/webp': '.webp',
-            'application/pdf': '.pdf',
-            'text/plain': '.txt',
-            'text/html': '.html',
+            'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp',
+            'application/pdf': '.pdf', 'text/plain': '.txt', 'text/html': '.html',
         };
         return mimeMap[mimeType] || '';
     }
@@ -271,10 +264,7 @@ textarea.form-control {
     // --- CLIPBOARD FEATURE ---
     async function fetchMessages() {
         const { data, error } = await supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(100);
-        if (error) {
-            console.error('Error fetching messages:', error);
-            return;
-        }
+        if (error) { console.error('Error fetching messages:', error); return; }
         
         currentMessageIndex = -1;
         clipboardList.innerHTML = ''; 
@@ -282,40 +272,25 @@ textarea.form-control {
         data.forEach(msg => {
             const listItem = document.createElement('div');
             listItem.className = 'list-item clipboard-item';
-            
             const titleHTML = msg.title ? `<div class="message-title">${escapeHTML(msg.title)}</div>` : '';
-
             listItem.innerHTML = `
                 <div class="clipboard-content">
-                    <div class="message-header">
-                        ${titleHTML}
-                        <div class="timestamp">${formatTimestamp(msg.created_at)}</div>
-                    </div>
-                    <div class="message-body">
-                        <pre><code></code></pre>
-                    </div>
+                    <div class="message-header">${titleHTML}<div class="timestamp">${formatTimestamp(msg.created_at)}</div></div>
+                    <div class="message-body"><pre><code></code></pre></div>
                 </div>
-                <div class="clipboard-actions"></div>
-            `;
-            
+                <div class="clipboard-actions"></div>`;
             listItem.querySelector('.message-body code').textContent = msg.content;
             
             const actionsDiv = listItem.querySelector('.clipboard-actions');
             const copyBtn = document.createElement('button');
-            copyBtn.className = 'btn btn-secondary btn-sm';
-            copyBtn.title = 'Copy';
-            copyBtn.innerHTML = `<i data-feather="copy"></i>`;
-            copyBtn.onclick = () => copyText(msg.content);
+            copyBtn.className = 'btn btn-secondary btn-sm'; copyBtn.title = 'Copy';
+            copyBtn.innerHTML = `<i data-feather="copy"></i>`; copyBtn.onclick = () => copyText(msg.content);
             
             const deleteBtn = document.createElement('button');
-            deleteBtn.className = 'btn btn-danger btn-sm';
-            deleteBtn.title = 'Delete';
-            deleteBtn.innerHTML = `<i data-feather="trash-2"></i>`;
-            deleteBtn.onclick = () => deleteMessage(msg.id);
+            deleteBtn.className = 'btn btn-danger btn-sm'; deleteBtn.title = 'Delete';
+            deleteBtn.innerHTML = `<i data-feather="trash-2"></i>`; deleteBtn.onclick = () => deleteMessage(msg.id);
 
-            actionsDiv.appendChild(copyBtn);
-            actionsDiv.appendChild(deleteBtn);
-
+            actionsDiv.appendChild(copyBtn); actionsDiv.appendChild(deleteBtn);
             clipboardList.appendChild(listItem);
         });
 
@@ -327,104 +302,64 @@ textarea.form-control {
         const title = clipboardTitleInput.value.trim();
         
         if (content) {
-            clipboardInput.disabled = true;
-            clipboardTitleInput.disabled = true;
-            shareBtn.disabled = true;
-
+            clipboardInput.disabled = true; clipboardTitleInput.disabled = true; shareBtn.disabled = true;
             const messageData = { content };
-            if (title) {
-                messageData.title = title;
-            }
+            if (title) messageData.title = title;
 
             const { error } = await supabase.from('messages').insert(messageData);
             
-            if (error) {
-                showToast('Failed to share message.', true);
-                console.error('Share error:', error);
-            } else {
-                clipboardInput.value = '';
-                clipboardTitleInput.value = '';
-            }
-            clipboardInput.disabled = false;
-            clipboardTitleInput.disabled = false;
-            shareBtn.disabled = false;
+            if (error) { showToast('Failed to share message.', true); console.error('Share error:', error); } 
+            else { clipboardInput.value = ''; clipboardTitleInput.value = ''; }
+            clipboardInput.disabled = false; clipboardTitleInput.disabled = false; shareBtn.disabled = false;
             clipboardInput.focus();
         }
     }
 
     async function deleteMessage(id) {
         const { error } = await supabase.from('messages').delete().eq('id', id);
-        if (error) {
-            showToast('Failed to delete message.', true);
-        } else {
-            showToast('Message deleted.');
-        }
+        if (error) showToast('Failed to delete message.', true);
+        else showToast('Message deleted.');
     }
     
     async function resetClipboard() {
         const { error } = await supabase.from('messages').delete().neq('id', 0);
-        if (error) {
-            showToast('Failed to reset clipboard.', true);
-        } else {
-            showToast('Clipboard cleared.');
-        }
+        if (error) showToast('Failed to reset clipboard.', true);
+        else showToast('Clipboard cleared.');
     }
 
     function selectNextMessage() {
         const messages = clipboardList.querySelectorAll('.list-item');
         if (messages.length === 0) return;
-
-        if (currentMessageIndex > -1) {
-            messages[currentMessageIndex].classList.remove('highlighted');
-        }
-
+        if (currentMessageIndex > -1) messages[currentMessageIndex].classList.remove('highlighted');
         currentMessageIndex = (currentMessageIndex + 1) % messages.length;
-
         const currentMessage = messages[currentMessageIndex];
         currentMessage.classList.add('highlighted');
-        
-        currentMessage.scrollIntoView({
-            behavior: 'smooth',
-            block: 'start'
-        });
+        currentMessage.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     // --- FILE HUB FEATURE ---
     async function fetchFiles() {
         const { data, error } = await supabase.storage.from('files').list('', { sortBy: { column: 'created_at', order: 'desc' } });
-        if (error) {
-            console.error('Error listing files:', error);
-            return;
-        }
+        if (error) { console.error('Error listing files:', error); return; }
 
         fileList.innerHTML = ''; 
 
         data.forEach(file => {
             const listItem = document.createElement('li');
             listItem.className = 'list-item';
-
             const fileUrl = supabase.storage.from('files').getPublicUrl(file.name).data.publicUrl;
-
             listItem.innerHTML = `
-                <div class="file-info">
-                    <i data-feather="file-text"></i>
-                    <span></span>
-                </div>
+                <div class="file-info"><i data-feather="file-text"></i><span></span></div>
                 <div class="file-actions">
                     <a class="btn btn-primary btn-sm" href="${fileUrl}" title="Download"><i data-feather="download"></i></a>
                     <a class="btn btn-secondary btn-sm" href="${fileUrl}" target="_blank" title="View"><i data-feather="eye"></i></a>
-                </div>
-            `;
-
+                </div>`;
             listItem.querySelector('.file-info span').textContent = file.name;
             listItem.querySelector('a[title="Download"]').setAttribute('download', file.name);
 
             const deleteBtn = document.createElement('button');
-            deleteBtn.className = 'btn btn-danger btn-sm';
-            deleteBtn.title = 'Delete';
-            deleteBtn.innerHTML = `<i data-feather="trash-2"></i>`;
-            deleteBtn.onclick = () => deleteFile(file.name);
-
+            deleteBtn.className = 'btn btn-danger btn-sm'; deleteBtn.title = 'Delete';
+            deleteBtn.innerHTML = `<i data-feather="trash-2"></i>`; deleteBtn.onclick = () => deleteFile(file.name);
             listItem.querySelector('.file-actions').appendChild(deleteBtn);
             fileList.appendChild(listItem);
         });
@@ -432,117 +367,77 @@ textarea.form-control {
         feather.replace();
     }
 
-    // Function to upload a file
     async function uploadFile(file) {
         setUploadStatus(`Uploading ${file.name}...`);
         const { error } = await supabase.storage.from('files').upload(file.name, file, { upsert: true });
-        if (error) {
-            setUploadStatus(`Failed to upload ${file.name}.`, true);
-            console.error('Upload error:', error);
-        } else {
-            setUploadStatus(`Uploaded ${file.name} successfully!`);
-        }
+        if (error) { setUploadStatus(`Failed to upload ${file.name}.`, true); console.error('Upload error:', error); } 
+        else { setUploadStatus(`Uploaded ${file.name} successfully!`); }
     }
     
-    // UPDATED: Function to upload files from a URL with special handling for Google Drive and HTML pages
+    // UPDATED: More robust URL fetching
     async function uploadFileFromUrl() {
         let url = urlInput.value.trim();
         if (!url) return;
 
-        // Handle Google Drive links
         if (url.includes("drive.google.com")) {
             const match = url.match(/file\/d\/(.+?)\//);
-            if (match && match[1]) {
-                url = `https://drive.google.com/uc?export=download&id=${match[1]}`;
-            }
+            if (match && match[1]) url = `https://drive.google.com/uc?export=download&id=${match[1]}`;
         }
         
-        // Handle data URL
         if (url.startsWith('data:')) {
             try {
                 const file = dataURLtoFile(url, `pasted-file-${Date.now()}`);
-                await uploadFile(file);
-                urlInput.value = '';
-            } catch (error) {
-                setUploadStatus('Failed to upload from data URL.', true);
-                console.error('Data URL Error:', error);
-            }
+                await uploadFile(file); urlInput.value = '';
+            } catch (error) { setUploadStatus('Failed to upload from data URL.', true); console.error('Data URL Error:', error); }
             return;
         }
 
-        // Handle regular URL
         setUploadStatus('Fetching file from URL...');
         try {
             const response = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`);
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
             const blob = await response.blob();
             const mimeType = blob.type;
             
-            // If the content is an HTML page, try to find an image in it
             if (mimeType === 'text/html') {
                  const text = await blob.text();
                  const doc = new DOMParser().parseFromString(text, 'text/html');
-                 const img = doc.querySelector('img');
-                 if (img && img.src) {
-                     urlInput.value = img.src; // Set the input to the found image source
-                     uploadFileFromUrl(); // And run the function again
-                     return;
-                 } else {
-                     throw new Error('No image found on the page.');
-                 }
+                 const img = doc.querySelector('meta[property="og:image"]');
+                 if (img && img.content) {
+                     urlInput.value = img.content;
+                     uploadFileFromUrl(); return;
+                 } else { throw new Error('No direct image found on the page.'); }
             }
 
             const extension = getExtensionFromMimeType(mimeType);
-            let fileName = url.substring(url.lastIndexOf('/') + 1).split('?')[0];
+            let fileName = url.substring(url.lastIndexOf('/') + 1).split('?')[0] || `file-${Date.now()}${extension}`;
+            if (fileName && !fileName.includes('.')) fileName += extension;
             
-            if (fileName && !fileName.includes('.')) { 
-                 fileName += extension;
-            }
-
-            if (!fileName) {
-                fileName = `file-${Date.now()}${extension}`;
-            }
-
             const file = new File([blob], fileName, { type: mimeType });
-
             await uploadFile(file);
             urlInput.value = '';
 
         } catch (error) {
-            setUploadStatus('Failed to fetch file from URL.', true);
+            setUploadStatus(`Failed to fetch from URL. ${error.message}`, true);
             console.error('URL Fetch Error:', error);
         }
     }
 
     async function deleteFile(fileName) {
         const { error } = await supabase.storage.from('files').remove([fileName]);
-        if (error) {
-            showToast(`Failed to delete ${fileName}.`, true);
-        } else {
-            showToast(`Deleted ${fileName}.`);
-        }
+        if (error) showToast(`Failed to delete ${fileName}.`, true);
+        else showToast(`Deleted ${fileName}.`);
     }
 
     async function resetFiles() {
         const { data: files, error } = await supabase.storage.from('files').list();
-        if (error) {
-            showToast('Could not list files to delete.', true);
-            return;
-        }
-        if (files.length === 0) {
-            showToast('No files to delete.');
-            return;
-        }
-        const fileNames = files.map(file => file.name);
+        if (error) { showToast('Could not list files to delete.', true); return; }
+        if (files.length === 0) { showToast('No files to delete.'); return; }
+        const fileNames = files.map(f => f.name);
         const { error: deleteError } = await supabase.storage.from('files').remove(fileNames);
-        if (deleteError) {
-            showToast('Failed to delete all files.', true);
-        } else {
-            showToast('All files have been deleted.');
-        }
+        if (deleteError) showToast('Failed to delete all files.', true);
+        else showToast('All files have been deleted.');
     }
 
     // --- INITIALIZATION ---
@@ -552,9 +447,7 @@ textarea.form-control {
             if (!response.ok) throw new Error('Network response was not ok');
             const config = await response.json();
 
-            if (!config.url || !config.key) {
-                throw new Error('Supabase URL or Key is missing from config.');
-            }
+            if (!config.url || !config.key) throw new Error('Supabase URL or Key is missing from config.');
 
             supabase = window.supabase.createClient(config.url, config.key);
             
@@ -564,69 +457,30 @@ textarea.form-control {
 
             // --- Event Listeners ---
             shareBtn.addEventListener('click', shareMessage);
-            clipboardInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault(); 
-                    shareMessage();
-                }
-            });
+            clipboardInput.addEventListener('keypress', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); shareMessage(); } });
             resetClipboardBtn.addEventListener('click', resetClipboard);
             nextMessageBtn.addEventListener('click', selectNextMessage);
 
             dropZone.addEventListener('click', () => fileInput.click());
-            fileInput.addEventListener('change', async (e) => {
-                if (e.target.files.length > 0) {
-                    await Promise.all([...e.target.files].map(uploadFile));
-                    fileInput.value = '';
-                }
-            });
+            fileInput.addEventListener('change', async (e) => { if (e.target.files.length > 0) { await Promise.all([...e.target.files].map(uploadFile)); fileInput.value = ''; } });
             dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
             dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('dragover'); });
-            dropZone.addEventListener('drop', async (e) => {
-                e.preventDefault();
-                dropZone.classList.remove('dragover');
-                if (e.dataTransfer.files.length > 0) {
-                    await Promise.all([...e.dataTransfer.files].map(uploadFile));
-                }
-            });
+            dropZone.addEventListener('drop', async (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); if (e.dataTransfer.files.length > 0) { await Promise.all([...e.dataTransfer.files].map(uploadFile)); } });
             
-            // Event listener for pasting files or text into the drop zone
             dropZone.addEventListener('paste', async (e) => {
                 e.preventDefault();
-                if (e.clipboardData.files.length > 0) {
-                    await Promise.all([...e.clipboardData.files].map(uploadFile));
-                } else {
-                    const pastedText = (e.clipboardData || window.clipboardData).getData('text');
-                    if (pastedText) {
-                        urlInput.value = pastedText;
-                        showToast('URL pasted. Click Upload to proceed.');
-                    }
-                }
+                if (e.clipboardData.files.length > 0) { await Promise.all([...e.clipboardData.files].map(uploadFile)); } 
+                else { const pastedText = (e.clipboardData || window.clipboardData).getData('text'); if (pastedText) { urlInput.value = pastedText; showToast('URL pasted. Click Upload to proceed.'); } }
             });
 
-            // Explicitly handle paste for the URL input field
-            urlInput.addEventListener('paste', (e) => {
-                e.preventDefault();
-                const pastedText = (e.clipboardData || window.clipboardData).getData('text');
-                urlInput.value = pastedText;
-            });
-            
-            // Event listener for URL upload button
+            urlInput.addEventListener('paste', (e) => { e.preventDefault(); const pastedText = (e.clipboardData || window.clipboardData).getData('text'); urlInput.value = pastedText; });
             urlUploadBtn.addEventListener('click', uploadFileFromUrl);
-
             resetFilesBtn.addEventListener('click', resetFiles);
             
             // --- Realtime Subscriptions ---
             supabase.channel('public:messages')
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload) => {
-                    console.log('Message change received!', payload);
-                    fetchMessages();
-                })
-                .subscribe((status) => {
-                    if (status === 'SUBSCRIBED') {
-                        console.log('Connected to realtime channel!');
-                    }
-                });
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload) => { console.log('Message change received!', payload); fetchMessages(); })
+                .subscribe((status) => { if (status === 'SUBSCRIBED') console.log('Connected to realtime channel!'); });
 
             setInterval(fetchFiles, 5000);
 
