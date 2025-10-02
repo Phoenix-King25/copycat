@@ -211,7 +211,7 @@ textarea.form-control {
     const renameInput = document.getElementById('rename-input');
     const confirmUploadBtn = document.getElementById('confirm-upload-btn');
     const cancelUploadBtn = document.getElementById('cancel-upload-btn');
-
+    
     let supabase;
     let currentMessageIndex = -1;
     let fileToUpload = null;
@@ -444,7 +444,7 @@ textarea.form-control {
         else showToast('All files have been deleted.');
     }
 
-    // --- REWRITTEN: Preview Logic using Microsoft Viewer ---
+    // --- REWRITTEN: Preview Logic ---
     async function showPreview(fileUrl, fileName) {
         const extension = fileName.split('.').pop().toLowerCase();
         const officeExtensions = ['docx', 'docm', 'dotm', 'dotx', 'xlsx', 'xlsb', 'xls', 'xlsm', 'pptx', 'ppsx', 'ppt', 'pps', 'pptm', 'potm', 'ppam', 'potx', 'ppsm', 'csv'];
@@ -465,7 +465,7 @@ textarea.form-control {
                 const officeUrl = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(fileUrl)}`;
                 window.open(officeUrl, '_blank');
             } else if (imageExtensions.includes(extension) || extension === 'pdf') {
-                openPreviewTab(`<iframe src="${fileUrl}" frameborder="0" style="width:100%; height:100vh; margin:0; padding:0;"></iframe>`);
+                openPreviewTab(`<body style="margin:0; background-color: #282c34;"><iframe src="${fileUrl}" frameborder="0" style="width:100%; height:100vh;"></iframe></body>`);
             } else if (codeExtensions.includes(extension) || textExtensions.includes(extension)) {
                 const response = await fetch(fileUrl);
                 const text = await response.text();
@@ -475,8 +475,7 @@ textarea.form-control {
                             <title>Preview: ${fileName}</title>
                             <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css">
                             <style>
-                                html, body { margin:0; padding:0; height:100%; }
-                                body { background-color: #282c34; }
+                                html, body { margin:0; padding:0; height:100%; font-family: monospace; background-color: #282c34; }
                                 pre { margin: 1em; }
                             </style>
                         </head>
