@@ -104,13 +104,20 @@ textarea.form-control {
   transition: var(--transition-fast);
 }
 .list-item:hover { border-color: var(--accent); transform: translateY(-2px); }
+/* NEW: Style for the highlighted message */
+.list-item.highlighted {
+  border-color: var(--accent);
+  box-shadow: 0 0 15px var(--shadow-accent-glow);
+}
 .file-list { list-style: none; padding: 0; margin: 0; }
 .file-info { display: flex; align-items: center; gap: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 60%; }
 .file-actions { display: flex; gap: 8px; align-items: center; }
 #clipboard-list { max-height: 460px; overflow-y: auto; padding-right: 8px; }
 .clipboard-item { align-items: flex-start; }
 .clipboard-content { flex: 1; min-width: 0; }
-.message-header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.message-header { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+/* NEW: Style for the message title */
+.message-title { font-weight: 600; font-size: 1.05rem; color: var(--text); }
 .timestamp { color: var(--muted); font-size: 0.875rem; white-space: nowrap; }
 .message-body { word-wrap: break-word; color: var(--text); line-height: 1.5; }
 .message-body pre { margin: 0; white-space: pre-wrap; }
@@ -132,12 +139,16 @@ textarea.form-control {
     <div class="card-header"><i data-feather="clipboard"></i> Shared Clipboard</div>
     <div class="card-body">
       <div id="clipboard-list" aria-live="polite"></div>
-      <div style="display:flex;gap:8px;margin-top:12px">
+      <!-- NEW: Optional Title Input -->
+      <input id="clipboardTitleInput" class="form-control" placeholder="Optional Title..." style="margin-top:12px; margin-bottom: 8px;">
+      <div style="display:flex;gap:8px;">
         <textarea id="clipboardInput" class="form-control" placeholder="Type text to share..." rows="3"></textarea>
         <button id="shareBtn" class="btn btn-primary" title="Share"><i data-feather="send"></i></button>
       </div>
       <div id="clipboard-status" style="margin-top:10px;color:var(--muted);font-size:.9rem"></div>
-      <div style="margin-top: 16px; text-align: right;">
+      <div style="margin-top: 16px; text-align: right; display: flex; justify-content: flex-end; gap: 8px;">
+        <!-- NEW: Next Message Button -->
+        <button id="nextMessageBtn" class="btn btn-secondary"><i data-feather="arrow-down"></i> Next Message</button>
         <button id="resetClipboardBtn" class="btn btn-danger"><i data-feather="trash-2"></i> Reset</button>
       </div>
     </div>
@@ -175,6 +186,9 @@ textarea.form-control {
     const clipboardList = document.getElementById('clipboard-list');
     const resetClipboardBtn = document.getElementById('resetClipboardBtn');
     const clipboardStatus = document.getElementById('clipboard-status');
+    // NEW: Get new DOM elements
+    const clipboardTitleInput = document.getElementById('clipboardTitleInput');
+    const nextMessageBtn = document.getElementById('nextMessageBtn');
 
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
@@ -183,6 +197,8 @@ textarea.form-control {
     const uploadStatus = document.getElementById('upload-status');
     
     let supabase;
+    // NEW: State for next message feature
+    let currentMessageIndex = -1;
 
     // --- UTILITY FUNCTIONS ---
     function showToast(message, isError = false) {
@@ -199,6 +215,7 @@ textarea.form-control {
     }
 
     function escapeHTML(str) {
+      if (!str) return '';
       return str.toString().replace(/[&<>"']/g, function(match) {
         return {
           '&': '&amp;',
@@ -235,17 +252,22 @@ textarea.form-control {
             console.error('Error fetching messages:', error);
             return;
         }
-
-        // --- SECURE RENDERING LOGIC ---
+        
+        // NEW: Reset index when messages are fetched/refreshed
+        currentMessageIndex = -1;
         clipboardList.innerHTML = ''; 
 
         data.forEach(msg => {
             const listItem = document.createElement('div');
             listItem.className = 'list-item clipboard-item';
             
+            // NEW: Added title display logic
+            const titleHTML = msg.title ? `<div class="message-title">${escapeHTML(msg.title)}</div>` : '';
+
             listItem.innerHTML = `
                 <div class="clipboard-content">
                     <div class="message-header">
+                        ${titleHTML}
                         <div class="timestamp">${formatTimestamp(msg.created_at)}</div>
                     </div>
                     <div class="message-body">
@@ -255,11 +277,9 @@ textarea.form-control {
                 <div class="clipboard-actions"></div>
             `;
             
-            // SECURELY insert user content as plain text
             listItem.querySelector('.message-body code').textContent = msg.content;
             
             const actionsDiv = listItem.querySelector('.clipboard-actions');
-            
             const copyBtn = document.createElement('button');
             copyBtn.className = 'btn btn-secondary btn-sm';
             copyBtn.title = 'Copy';
@@ -283,17 +303,32 @@ textarea.form-control {
 
     async function shareMessage() {
         const content = clipboardInput.value;
+        // NEW: Get title value
+        const title = clipboardTitleInput.value.trim();
+        
         if (content) {
             clipboardInput.disabled = true;
+            clipboardTitleInput.disabled = true;
             shareBtn.disabled = true;
-            const { error } = await supabase.from('messages').insert({ content });
+
+            // NEW: Prepare message object with optional title
+            const messageData = { content };
+            if (title) {
+                messageData.title = title;
+            }
+
+            const { error } = await supabase.from('messages').insert(messageData);
+            
             if (error) {
                 showToast('Failed to share message.', true);
                 console.error('Share error:', error);
             } else {
                 clipboardInput.value = '';
+                // NEW: Clear title input on success
+                clipboardTitleInput.value = '';
             }
             clipboardInput.disabled = false;
+            clipboardTitleInput.disabled = false;
             shareBtn.disabled = false;
             clipboardInput.focus();
         }
@@ -308,6 +343,29 @@ textarea.form-control {
         if (!confirm('Are you sure you want to delete all clipboard messages?')) return;
         const { data, error } = await supabase.from('messages').delete().neq('id', 0);
         if (error) showToast('Failed to reset clipboard.', true);
+    }
+
+    // NEW: Function for "Next Message" button
+    function selectNextMessage() {
+        const messages = clipboardList.querySelectorAll('.list-item');
+        if (messages.length === 0) return;
+
+        // Remove highlight from the previous message
+        if (currentMessageIndex > -1) {
+            messages[currentMessageIndex].classList.remove('highlighted');
+        }
+
+        // Move to the next index, looping back to the start if at the end
+        currentMessageIndex = (currentMessageIndex + 1) % messages.length;
+
+        const currentMessage = messages[currentMessageIndex];
+        currentMessage.classList.add('highlighted');
+        
+        // Scroll the highlighted message into view
+        currentMessage.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center'
+        });
     }
 
     // --- FILE HUB FEATURE ---
@@ -386,7 +444,7 @@ textarea.form-control {
             await fetchFiles();
             feather.replace();
 
-            // Clipboard Listeners
+            // --- Event Listeners ---
             shareBtn.addEventListener('click', shareMessage);
             clipboardInput.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
@@ -395,8 +453,9 @@ textarea.form-control {
                 }
             });
             resetClipboardBtn.addEventListener('click', resetClipboard);
+            // NEW: Add listener for the next message button
+            nextMessageBtn.addEventListener('click', selectNextMessage);
 
-            // File Listeners
             dropZone.addEventListener('click', () => fileInput.click());
             fileInput.addEventListener('change', async (e) => {
                 if (e.target.files.length > 0) {
@@ -415,7 +474,7 @@ textarea.form-control {
             });
             resetFilesBtn.addEventListener('click', resetFiles);
             
-            // Realtime Subscriptions
+            // --- Realtime Subscriptions ---
             supabase.channel('public:messages')
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload) => {
                     console.log('Message change received!', payload);
@@ -439,3 +498,4 @@ textarea.form-control {
 </script>
 </body>
 </html>
+
