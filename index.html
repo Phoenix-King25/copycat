@@ -113,7 +113,7 @@ textarea.form-control {
 .message-header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
 .timestamp { color: var(--muted); font-size: 0.875rem; white-space: nowrap; }
 .message-body { word-wrap: break-word; color: var(--text); line-height: 1.5; }
-.message-body pre { margin: 0; white-space: pre-wrap; } /* Ensures pre tag wraps content */
+.message-body pre { margin: 0; white-space: pre-wrap; }
 .message-body pre, .message-body code { font-family: monospace; font-size: 0.9rem; }
 .clipboard-actions { display: flex; flex-direction: column; gap: 8px; margin-left: 12px; align-items: flex-end; }
 #toast-container { position: fixed; right: 24px; top: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 12px; }
@@ -199,9 +199,6 @@ textarea.form-control {
     }
 
     function escapeHTML(str) {
-      // This function is critical for security.
-      // It converts HTML special characters to their text equivalents.
-      // For example, '<' becomes '&lt;'
       return str.toString().replace(/[&<>"']/g, function(match) {
         return {
           '&': '&amp;',
@@ -238,21 +235,14 @@ textarea.form-control {
             console.error('Error fetching messages:', error);
             return;
         }
-        
-        // This is the SAFE WAY to render user content.
-        // 1. Clear the list.
+
+        // --- SECURE RENDERING LOGIC ---
         clipboardList.innerHTML = ''; 
 
-        // 2. Loop through messages and build elements safely.
         data.forEach(msg => {
-            // Create the main list item
             const listItem = document.createElement('div');
             listItem.className = 'list-item clipboard-item';
             
-            // The content string with escaped HTML
-            // This ensures characters like ' are handled in the onclick attribute
-            const escapedContent = msg.content.replace(/`/g, '\\`').replace(/'/g, "\\'");
-
             listItem.innerHTML = `
                 <div class="clipboard-content">
                     <div class="message-header">
@@ -262,16 +252,29 @@ textarea.form-control {
                         <pre><code></code></pre>
                     </div>
                 </div>
-                <div class="clipboard-actions">
-                    <button class="btn btn-secondary btn-sm" onclick='copyText(\`${escapedContent}\`)' title="Copy"><i data-feather="copy"></i></button>
-                    <button class="btn btn-danger btn-sm" onclick="deleteMessage(${msg.id})" title="Delete"><i data-feather="trash-2"></i></button>
-                </div>
+                <div class="clipboard-actions"></div>
             `;
             
-            // 3. Set the content using .textContent to prevent HTML rendering. This is the key.
+            // SECURELY insert user content as plain text
             listItem.querySelector('.message-body code').textContent = msg.content;
             
-            // 4. Append the fully constructed, safe element to the list.
+            const actionsDiv = listItem.querySelector('.clipboard-actions');
+            
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'btn btn-secondary btn-sm';
+            copyBtn.title = 'Copy';
+            copyBtn.innerHTML = `<i data-feather="copy"></i>`;
+            copyBtn.onclick = () => copyText(msg.content);
+            
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'btn btn-danger btn-sm';
+            deleteBtn.title = 'Delete';
+            deleteBtn.innerHTML = `<i data-feather="trash-2"></i>`;
+            deleteBtn.onclick = () => deleteMessage(msg.id);
+
+            actionsDiv.appendChild(copyBtn);
+            actionsDiv.appendChild(deleteBtn);
+
             clipboardList.appendChild(listItem);
         });
 
@@ -279,7 +282,7 @@ textarea.form-control {
     }
 
     async function shareMessage() {
-        const content = clipboardInput.value; // .trim() can remove leading spaces from code
+        const content = clipboardInput.value;
         if (content) {
             clipboardInput.disabled = true;
             shareBtn.disabled = true;
@@ -299,14 +302,12 @@ textarea.form-control {
     async function deleteMessage(id) {
         const { error } = await supabase.from('messages').delete().eq('id', id);
         if (error) showToast('Failed to delete message.', true);
-        else showToast('Message deleted.');
     }
     
     async function resetClipboard() {
         if (!confirm('Are you sure you want to delete all clipboard messages?')) return;
         const { data, error } = await supabase.from('messages').delete().neq('id', 0);
         if (error) showToast('Failed to reset clipboard.', true);
-        else showToast('Clipboard cleared.');
     }
 
     // --- FILE HUB FEATURE ---
@@ -350,7 +351,6 @@ textarea.form-control {
         if (!confirm(`Are you sure you want to delete ${fileName}?`)) return;
         const { error } = await supabase.storage.from('files').remove([fileName]);
         if (error) showToast(`Failed to delete ${fileName}.`, true);
-        else showToast(`Deleted ${fileName}.`);
     }
 
     async function resetFiles() {
@@ -367,7 +367,6 @@ textarea.form-control {
         const fileNames = files.map(file => file.name);
         const { error: deleteError } = await supabase.storage.from('files').remove(fileNames);
         if (deleteError) showToast('Failed to delete all files.', true);
-        else showToast('All files have been deleted.');
     }
 
     // --- INITIALIZATION ---
@@ -422,7 +421,11 @@ textarea.form-control {
                     console.log('Message change received!', payload);
                     fetchMessages();
                 })
-                .subscribe();
+                .subscribe((status) => {
+                    if (status === 'SUBSCRIBED') {
+                        console.log('Connected to realtime channel!');
+                    }
+                });
 
             setInterval(fetchFiles, 5000);
 
