@@ -104,7 +104,6 @@ textarea.form-control {
   transition: var(--transition-fast);
 }
 .list-item:hover { border-color: var(--accent); transform: translateY(-2px); }
-/* NEW: Style for the highlighted message */
 .list-item.highlighted {
   border-color: var(--accent);
   box-shadow: 0 0 15px var(--shadow-accent-glow);
@@ -116,7 +115,6 @@ textarea.form-control {
 .clipboard-item { align-items: flex-start; }
 .clipboard-content { flex: 1; min-width: 0; }
 .message-header { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
-/* NEW: Style for the message title */
 .message-title { font-weight: 600; font-size: 1.05rem; color: var(--text); }
 .timestamp { color: var(--muted); font-size: 0.875rem; white-space: nowrap; }
 .message-body { word-wrap: break-word; color: var(--text); line-height: 1.5; }
@@ -131,6 +129,34 @@ textarea.form-control {
 }
 .toast.success { border-color: var(--success); }
 .toast.error { border-color: var(--danger); }
+
+/* NEW: Styles for the Confirmation Modal */
+.modal-overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 10000; opacity: 0; pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+.modal-overlay.visible {
+  opacity: 1; pointer-events: auto;
+}
+.modal-content {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 16px; padding: 24px; max-width: 400px;
+  width: 90%; text-align: center;
+  transform: scale(0.95); transition: transform 0.2s ease;
+}
+.modal-overlay.visible .modal-content {
+  transform: scale(1);
+}
+#modal-text {
+  margin: 0; margin-bottom: 20px;
+  line-height: 1.6;
+}
+.modal-actions {
+  display: flex; justify-content: center; gap: 12px;
+}
 </style>
 </head>
 <body>
@@ -139,7 +165,6 @@ textarea.form-control {
     <div class="card-header"><i data-feather="clipboard"></i> Shared Clipboard</div>
     <div class="card-body">
       <div id="clipboard-list" aria-live="polite"></div>
-      <!-- NEW: Optional Title Input -->
       <input id="clipboardTitleInput" class="form-control" placeholder="Optional Title..." style="margin-top:12px; margin-bottom: 8px;">
       <div style="display:flex;gap:8px;">
         <textarea id="clipboardInput" class="form-control" placeholder="Type text to share..." rows="3"></textarea>
@@ -147,7 +172,6 @@ textarea.form-control {
       </div>
       <div id="clipboard-status" style="margin-top:10px;color:var(--muted);font-size:.9rem"></div>
       <div style="margin-top: 16px; text-align: right; display: flex; justify-content: flex-end; gap: 8px;">
-        <!-- NEW: Next Message Button -->
         <button id="nextMessageBtn" class="btn btn-secondary"><i data-feather="arrow-down"></i> Next Message</button>
         <button id="resetClipboardBtn" class="btn btn-danger"><i data-feather="trash-2"></i> Reset</button>
       </div>
@@ -157,7 +181,8 @@ textarea.form-control {
   <div class="card">
     <div class="card-header"><i data-feather="upload-cloud"></i> File Hub</div>
     <div class="card-body">
-      <div id="drop-zone" onclick="document.getElementById('file-input').click()">
+      <!-- FIXED: Removed inline onclick to prevent double-trigger issue -->
+      <div id="drop-zone">
         <input id="file-input" type="file" multiple style="display:none">
         <i data-feather="upload" style="width:36px;height:36px"></i>
         <p style="color:var(--muted);margin:8px 0 0 0">Drag & drop files here, or click to select.</p>
@@ -179,6 +204,17 @@ textarea.form-control {
 
 <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
 
+<!-- NEW: Custom Confirmation Modal HTML -->
+<div id="confirmation-modal" class="modal-overlay">
+    <div class="modal-content">
+        <p id="modal-text"></p>
+        <div class="modal-actions">
+            <button id="modal-cancel-btn" class="btn btn-secondary">Cancel</button>
+            <button id="modal-confirm-btn" class="btn btn-danger">Confirm</button>
+        </div>
+    </div>
+</div>
+
 <script>
     // --- DOM Elements ---
     const clipboardInput = document.getElementById('clipboardInput');
@@ -186,19 +222,23 @@ textarea.form-control {
     const clipboardList = document.getElementById('clipboard-list');
     const resetClipboardBtn = document.getElementById('resetClipboardBtn');
     const clipboardStatus = document.getElementById('clipboard-status');
-    // NEW: Get new DOM elements
     const clipboardTitleInput = document.getElementById('clipboardTitleInput');
     const nextMessageBtn = document.getElementById('nextMessageBtn');
-
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
     const fileList = document.getElementById('fileList');
     const resetFilesBtn = document.getElementById('resetFilesBtn');
     const uploadStatus = document.getElementById('upload-status');
     
+    // NEW: Modal DOM Elements
+    const modal = document.getElementById('confirmation-modal');
+    const modalText = document.getElementById('modal-text');
+    const modalConfirmBtn = document.getElementById('modal-confirm-btn');
+    const modalCancelBtn = document.getElementById('modal-cancel-btn');
+    
     let supabase;
-    // NEW: State for next message feature
     let currentMessageIndex = -1;
+    let confirmCallback = null; // To store the action for the modal
 
     // --- UTILITY FUNCTIONS ---
     function showToast(message, isError = false) {
@@ -245,6 +285,18 @@ textarea.form-control {
         return date.toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
     }
 
+    // NEW: Functions to handle the custom confirmation modal
+    function showConfirmation(message, onConfirm) {
+        modalText.textContent = message;
+        confirmCallback = onConfirm;
+        modal.classList.add('visible');
+    }
+
+    function hideConfirmation() {
+        modal.classList.remove('visible');
+        confirmCallback = null;
+    }
+
     // --- CLIPBOARD FEATURE ---
     async function fetchMessages() {
         const { data, error } = await supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(100);
@@ -253,7 +305,6 @@ textarea.form-control {
             return;
         }
         
-        // NEW: Reset index when messages are fetched/refreshed
         currentMessageIndex = -1;
         clipboardList.innerHTML = ''; 
 
@@ -261,7 +312,6 @@ textarea.form-control {
             const listItem = document.createElement('div');
             listItem.className = 'list-item clipboard-item';
             
-            // NEW: Added title display logic
             const titleHTML = msg.title ? `<div class="message-title">${escapeHTML(msg.title)}</div>` : '';
 
             listItem.innerHTML = `
@@ -303,7 +353,6 @@ textarea.form-control {
 
     async function shareMessage() {
         const content = clipboardInput.value;
-        // NEW: Get title value
         const title = clipboardTitleInput.value.trim();
         
         if (content) {
@@ -311,7 +360,6 @@ textarea.form-control {
             clipboardTitleInput.disabled = true;
             shareBtn.disabled = true;
 
-            // NEW: Prepare message object with optional title
             const messageData = { content };
             if (title) {
                 messageData.title = title;
@@ -324,7 +372,6 @@ textarea.form-control {
                 console.error('Share error:', error);
             } else {
                 clipboardInput.value = '';
-                // NEW: Clear title input on success
                 clipboardTitleInput.value = '';
             }
             clipboardInput.disabled = false;
@@ -335,36 +382,35 @@ textarea.form-control {
     }
 
     async function deleteMessage(id) {
-        const { error } = await supabase.from('messages').delete().eq('id', id);
-        if (error) showToast('Failed to delete message.', true);
+        showConfirmation('Are you sure you want to delete this message?', async () => {
+            const { error } = await supabase.from('messages').delete().eq('id', id);
+            if (error) showToast('Failed to delete message.', true);
+        });
     }
     
-    async function resetClipboard() {
-        if (!confirm('Are you sure you want to delete all clipboard messages?')) return;
-        const { data, error } = await supabase.from('messages').delete().neq('id', 0);
-        if (error) showToast('Failed to reset clipboard.', true);
+    function resetClipboard() {
+        showConfirmation('Are you sure you want to delete all clipboard messages?', async () => {
+            const { data, error } = await supabase.from('messages').delete().neq('id', 0);
+            if (error) showToast('Failed to reset clipboard.', true);
+        });
     }
 
-    // NEW: Function for "Next Message" button
     function selectNextMessage() {
         const messages = clipboardList.querySelectorAll('.list-item');
         if (messages.length === 0) return;
 
-        // Remove highlight from the previous message
         if (currentMessageIndex > -1) {
             messages[currentMessageIndex].classList.remove('highlighted');
         }
 
-        // Move to the next index, looping back to the start if at the end
         currentMessageIndex = (currentMessageIndex + 1) % messages.length;
 
         const currentMessage = messages[currentMessageIndex];
         currentMessage.classList.add('highlighted');
         
-        // Scroll the highlighted message into view
         currentMessage.scrollIntoView({
             behavior: 'smooth',
-            block: 'start' // CHANGED: from 'center' to 'start' to align to the top
+            block: 'start'
         });
     }
 
@@ -405,26 +451,28 @@ textarea.form-control {
         }
     }
 
-    async function deleteFile(fileName) {
-        if (!confirm(`Are you sure you want to delete ${fileName}?`)) return;
-        const { error } = await supabase.storage.from('files').remove([fileName]);
-        if (error) showToast(`Failed to delete ${fileName}.`, true);
+    function deleteFile(fileName) {
+        showConfirmation(`Are you sure you want to delete ${fileName}?`, async () => {
+            const { error } = await supabase.storage.from('files').remove([fileName]);
+            if (error) showToast(`Failed to delete ${fileName}.`, true);
+        });
     }
 
-    async function resetFiles() {
-        if (!confirm('Are you sure you want to delete ALL files? This cannot be undone.')) return;
-        const { data: files, error } = await supabase.storage.from('files').list();
-        if (error) {
-            showToast('Could not list files to delete.', true);
-            return;
-        }
-        if (files.length === 0) {
-            showToast('No files to delete.');
-            return;
-        }
-        const fileNames = files.map(file => file.name);
-        const { error: deleteError } = await supabase.storage.from('files').remove(fileNames);
-        if (deleteError) showToast('Failed to delete all files.', true);
+    function resetFiles() {
+        showConfirmation('Are you sure you want to delete ALL files? This cannot be undone.', async () => {
+            const { data: files, error } = await supabase.storage.from('files').list();
+            if (error) {
+                showToast('Could not list files to delete.', true);
+                return;
+            }
+            if (files.length === 0) {
+                showToast('No files to delete.');
+                return;
+            }
+            const fileNames = files.map(file => file.name);
+            const { error: deleteError } = await supabase.storage.from('files').remove(fileNames);
+            if (deleteError) showToast('Failed to delete all files.', true);
+        });
     }
 
     // --- INITIALIZATION ---
@@ -453,9 +501,9 @@ textarea.form-control {
                 }
             });
             resetClipboardBtn.addEventListener('click', resetClipboard);
-            // NEW: Add listener for the next message button
             nextMessageBtn.addEventListener('click', selectNextMessage);
 
+            // FIXED: Event listener is now cleaner and more reliable
             dropZone.addEventListener('click', () => fileInput.click());
             fileInput.addEventListener('change', async (e) => {
                 if (e.target.files.length > 0) {
@@ -473,6 +521,20 @@ textarea.form-control {
                 }
             });
             resetFilesBtn.addEventListener('click', resetFiles);
+
+            // NEW: Modal event listeners
+            modalConfirmBtn.addEventListener('click', () => {
+                if (confirmCallback) {
+                    confirmCallback();
+                }
+                hideConfirmation();
+            });
+            modalCancelBtn.addEventListener('click', hideConfirmation);
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) { // only close if overlay is clicked
+                    hideConfirmation();
+                }
+            });
             
             // --- Realtime Subscriptions ---
             supabase.channel('public:messages')
