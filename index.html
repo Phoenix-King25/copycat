@@ -9,7 +9,6 @@
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
 
@@ -458,10 +457,10 @@ textarea.form-control {
     // --- REWRITTEN: Preview Logic ---
     async function showPreview(fileUrl, fileName) {
         const extension = fileName.split('.').pop().toLowerCase();
-        const officeExtensions = ['docx', 'docm', 'dotm', 'dotx', 'xlsx', 'xlsb', 'xls', 'xlsm', 'pptx', 'ppsx', 'ppt', 'pps', 'pptm', 'potm', 'ppam', 'potx', 'ppsm'];
+        const officeExtensions = ['docx', 'docm', 'dotm', 'dotx', 'xlsx', 'xlsb', 'xls', 'xlsm', 'pptx', 'ppsx', 'ppt', 'pps', 'pptm', 'potm', 'ppam', 'potx', 'ppsm', 'rtf'];
         const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'];
         const codeExtensions = ['java', 'py', 'c', 'cpp', 'cs', 'rb', 'go', 'js', 'ts', 'html', 'css', 'xml', 'json', 'sh', 'bat'];
-        const textExtensions = ['txt', 'rtf', 'md', 'csv'];
+        const textExtensions = ['txt', 'md', 'csv'];
 
         const openPreviewTab = (content) => {
             const previewTab = window.open('about:blank', '_blank');
@@ -548,11 +547,11 @@ textarea.form-control {
             await fetchFiles();
             feather.replace();
 
-            initClipboardSync(); // Check if permission is already granted
+            initClipboardSync();
 
             shareBtn.addEventListener('click', shareMessage);
             clipboardInput.addEventListener('keypress', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); shareMessage(); } });
-            clipboardInput.addEventListener('focus', requestClipboardSync, { once: true }); // Request permission on first focus
+            clipboardInput.addEventListener('focus', requestClipboardSync, { once: true });
             resetClipboardBtn.addEventListener('click', resetClipboard);
             nextMessageBtn.addEventListener('click', selectNextMessage);
             dropZone.addEventListener('click', () => fileInput.click());
