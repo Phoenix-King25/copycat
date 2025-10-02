@@ -349,14 +349,26 @@ textarea.form-control {
         feather.replace();
     }
 
+    // UPDATED: Re-introduced file renaming
     async function uploadFile(file) {
-        setUploadStatus(`Uploading ${file.name}...`);
-        const { error } = await supabase.storage.from('files').upload(file.name, file, { upsert: true });
-        if (error) { setUploadStatus(`Failed to upload ${file.name}.`, true); console.error('Upload error:', error); } 
-        else { setUploadStatus(`Uploaded ${file.name} successfully!`); }
+        let newName = prompt("Enter a name for the file:", file.name);
+        if (newName === null) {
+            showToast("File upload cancelled.", true);
+            return;
+        }
+        newName = newName.trim();
+        if (!newName) {
+            showToast("File name cannot be empty.", true);
+            return;
+        }
+        
+        setUploadStatus(`Uploading ${newName}...`);
+        const { error } = await supabase.storage.from('files').upload(newName, file, { upsert: true });
+        if (error) { setUploadStatus(`Failed to upload ${newName}.`, true); console.error('Upload error:', error); } 
+        else { setUploadStatus(`Uploaded ${newName} successfully!`); }
     }
     
-    // UPDATED: Function to use our own proxy for Google Drive and a public one for others
+    // UPDATED: Uses proxy's custom header to get filename
     async function uploadFileFromUrl() {
         let url = urlInput.value.trim();
         if (!url) return;
@@ -403,12 +415,17 @@ textarea.form-control {
                  } else { throw new Error('No direct image found on the page.'); }
             }
 
-            const extension = getExtensionFromMimeType(mimeType);
-            let fileName = url.substring(url.lastIndexOf('/') + 1).split('?')[0] || `file-${Date.now()}${extension}`;
-            if (fileName && !fileName.includes('.')) fileName += extension;
+            // --- NEW: Prioritize filename from the proxy header ---
+            let fileName = response.headers.get('X-Filename');
+            if (!fileName || fileName === 'downloaded-file') {
+                 // Fallback logic
+                 const extension = getExtensionFromMimeType(mimeType);
+                 fileName = url.substring(url.lastIndexOf('/') + 1).split('?')[0] || `file-${Date.now()}${extension}`;
+                 if (fileName && !fileName.includes('.')) fileName += extension;
+            }
             
             const file = new File([blob], fileName, { type: mimeType });
-            await uploadFile(file);
+            await uploadFile(file); // This will now trigger the rename prompt
             urlInput.value = '';
 
         } catch (error) {
