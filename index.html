@@ -158,6 +158,14 @@ textarea.form-control {
         <i data-feather="upload" style="width:36px;height:36px"></i>
         <p style="color:var(--muted);margin:8px 0 0 0">Drag & drop, paste, or click to select files.</p>
       </div>
+      <div id="rename-container" style="display:none; margin-top: 16px;">
+        <p style="margin: 0 0 8px 0; font-weight: 600;">Rename File:</p>
+        <div style="display: flex; gap: 8px;">
+          <input id="rename-input" class="form-control" placeholder="Enter new file name...">
+          <button id="confirm-upload-btn" class="btn btn-primary">Confirm</button>
+          <button id="cancel-upload-btn" class="btn btn-secondary">Cancel</button>
+        </div>
+      </div>
       <div style="margin-top: 16px; display: flex; gap: 8px;">
         <input id="url-input" class="form-control" placeholder="Or enter a file URL or data URL...">
         <button id="url-upload-btn" class="btn btn-primary">Upload</button>
@@ -195,9 +203,15 @@ textarea.form-control {
     const uploadStatus = document.getElementById('upload-status');
     const urlInput = document.getElementById('url-input');
     const urlUploadBtn = document.getElementById('url-upload-btn');
+    // NEW: Rename UI elements
+    const renameContainer = document.getElementById('rename-container');
+    const renameInput = document.getElementById('rename-input');
+    const confirmUploadBtn = document.getElementById('confirm-upload-btn');
+    const cancelUploadBtn = document.getElementById('cancel-upload-btn');
     
     let supabase;
     let currentMessageIndex = -1;
+    let fileToUpload = null; // NEW: Variable to hold file before renaming
 
     // --- UTILITY FUNCTIONS ---
     function showToast(message, isError = false) {
@@ -349,33 +363,47 @@ textarea.form-control {
         feather.replace();
     }
 
-    // UPDATED: Re-introduced file renaming
-    async function uploadFile(file) {
-        let newName = prompt("Enter a name for the file:", file.name);
-        if (newName === null) {
-            showToast("File upload cancelled.", true);
-            return;
-        }
-        newName = newName.trim();
+    // UPDATED: Triggers the rename UI instead of uploading directly
+    function triggerRename(file) {
+        fileToUpload = file;
+        renameInput.value = file.name;
+        renameContainer.style.display = 'block';
+        renameInput.focus();
+    }
+
+    // NEW: Function to handle the confirmed upload
+    async function confirmUpload() {
+        const newName = renameInput.value.trim();
         if (!newName) {
             showToast("File name cannot be empty.", true);
             return;
         }
+
+        if (fileToUpload) {
+            setUploadStatus(`Uploading ${newName}...`);
+            const { error } = await supabase.storage.from('files').upload(newName, fileToUpload, { upsert: true });
+
+            if (error) {
+                setUploadStatus(`Failed to upload ${newName}.`, true);
+                console.error('Upload error:', error);
+            } else {
+                setUploadStatus(`Uploaded ${newName} successfully!`);
+            }
+        }
         
-        setUploadStatus(`Uploading ${newName}...`);
-        const { error } = await supabase.storage.from('files').upload(newName, file, { upsert: true });
-        if (error) { setUploadStatus(`Failed to upload ${newName}.`, true); console.error('Upload error:', error); } 
-        else { setUploadStatus(`Uploaded ${newName} successfully!`); }
+        // Reset and hide the rename UI
+        fileToUpload = null;
+        renameInput.value = '';
+        renameContainer.style.display = 'none';
     }
     
-    // UPDATED: Uses proxy's custom header to get filename
     async function uploadFileFromUrl() {
         let url = urlInput.value.trim();
         if (!url) return;
         if (url.startsWith('data:')) {
             try {
                 const file = dataURLtoFile(url, `pasted-file-${Date.now()}`);
-                await uploadFile(file); urlInput.value = '';
+                triggerRename(file); urlInput.value = '';
             } catch (error) { setUploadStatus('Failed to upload from data URL.', true); console.error('Data URL Error:', error); }
             return;
         }
@@ -389,10 +417,7 @@ textarea.form-control {
                 const fileId = match[1];
                 const directDownloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
                 fetchUrl = `/api/fetch-proxy?url=${encodeURIComponent(directDownloadUrl)}`;
-            } else {
-                setUploadStatus('Invalid Google Drive link format.', true);
-                return;
-            }
+            } else { setUploadStatus('Invalid Google Drive link format.', true); return; }
         } else {
             fetchUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
         }
@@ -415,17 +440,15 @@ textarea.form-control {
                  } else { throw new Error('No direct image found on the page.'); }
             }
 
-            // --- NEW: Prioritize filename from the proxy header ---
             let fileName = response.headers.get('X-Filename');
             if (!fileName || fileName === 'downloaded-file') {
-                 // Fallback logic
                  const extension = getExtensionFromMimeType(mimeType);
                  fileName = url.substring(url.lastIndexOf('/') + 1).split('?')[0] || `file-${Date.now()}${extension}`;
                  if (fileName && !fileName.includes('.')) fileName += extension;
             }
             
             const file = new File([blob], fileName, { type: mimeType });
-            await uploadFile(file); // This will now trigger the rename prompt
+            triggerRename(file);
             urlInput.value = '';
 
         } catch (error) {
@@ -467,18 +490,27 @@ textarea.form-control {
             resetClipboardBtn.addEventListener('click', resetClipboard);
             nextMessageBtn.addEventListener('click', selectNextMessage);
             dropZone.addEventListener('click', () => fileInput.click());
-            fileInput.addEventListener('change', async (e) => { if (e.target.files.length > 0) { await Promise.all([...e.target.files].map(uploadFile)); fileInput.value = ''; } });
+            fileInput.addEventListener('change', async (e) => { if (e.target.files.length > 0) { triggerRename(e.target.files[0]); fileInput.value = ''; } });
             dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
             dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('dragover'); });
-            dropZone.addEventListener('drop', async (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); if (e.dataTransfer.files.length > 0) { await Promise.all([...e.dataTransfer.files].map(uploadFile)); } });
+            dropZone.addEventListener('drop', async (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); if (e.dataTransfer.files.length > 0) { triggerRename(e.dataTransfer.files[0]); } });
             dropZone.addEventListener('paste', async (e) => {
                 e.preventDefault();
-                if (e.clipboardData.files.length > 0) { await Promise.all([...e.clipboardData.files].map(uploadFile)); } 
+                if (e.clipboardData.files.length > 0) { triggerRename(e.clipboardData.files[0]); } 
                 else { const pastedText = (e.clipboardData || window.clipboardData).getData('text'); if (pastedText) { urlInput.value = pastedText; showToast('URL pasted. Click Upload to proceed.'); } }
             });
             urlInput.addEventListener('paste', (e) => { e.preventDefault(); const pastedText = (e.clipboardData || window.clipboardData).getData('text'); urlInput.value = pastedText; });
             urlUploadBtn.addEventListener('click', uploadFileFromUrl);
             resetFilesBtn.addEventListener('click', resetFiles);
+
+            // NEW: Event listeners for the rename UI
+            confirmUploadBtn.addEventListener('click', confirmUpload);
+            cancelUploadBtn.addEventListener('click', () => {
+                fileToUpload = null;
+                renameInput.value = '';
+                renameContainer.style.display = 'none';
+                showToast("Upload cancelled.", true);
+            });
             
             supabase.channel('public:messages')
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload) => { console.log('Message change received!', payload); fetchMessages(); })
