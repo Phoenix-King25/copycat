@@ -192,6 +192,19 @@ body {
         }, 2200);
     }
 
+    // CHANGE 2: Added security helper function to prevent code execution
+    function escapeHTML(str) {
+      return str.replace(/[&<>"']/g, function(match) {
+        return {
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#039;'
+        }[match];
+      });
+    }
+
     function setUploadStatus(msg, isErr = false) {
         uploadStatus.textContent = msg;
         uploadStatus.style.color = isErr ? 'var(--danger)' : 'var(--accent)';
@@ -223,7 +236,8 @@ body {
                     <div class="message-header">
                         <div class="timestamp">${formatTimestamp(msg.created_at)}</div>
                     </div>
-                    <div class="message-body">${msg.content}</div>
+                    {/* CHANGE 3: Used escapeHTML for security */}
+                    <div class="message-body">${escapeHTML(msg.content)}</div>
                 </div>
                 <div class="clipboard-actions">
                     <button class="btn btn-secondary btn-sm" onclick='copyText(\`${msg.content.replace(/`/g, '\\`')}\`)' title="Copy"><i data-feather="copy"></i></button>
@@ -337,8 +351,8 @@ body {
                 throw new Error('Supabase URL or Key is missing from config.');
             }
 
-            // Step 2: Initialize Supabase client
-            // The global 'Supabase' object is loaded from the self-hosted supabase.js file
+            // CHANGE 4: The final, correct way to initialize Supabase
+            // Use window.supabase to avoid variable shadowing
             supabase = window.supabase.createClient(config.url, config.key);
             
             // Step 3: Now that Supabase is ready, load data and set up listeners
