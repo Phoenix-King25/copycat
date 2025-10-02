@@ -192,6 +192,7 @@ textarea.form-control {
 </div>
 
 <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
+<div id="preview-render-container" style="display: none;"></div>
 
 <script>
     // --- DOM Elements ---
@@ -213,7 +214,8 @@ textarea.form-control {
     const renameInput = document.getElementById('rename-input');
     const confirmUploadBtn = document.getElementById('confirm-upload-btn');
     const cancelUploadBtn = document.getElementById('cancel-upload-btn');
-    
+    const previewRenderContainer = document.getElementById('preview-render-container');
+
     let supabase;
     let currentMessageIndex = -1;
     let fileToUpload = null;
@@ -234,9 +236,7 @@ textarea.form-control {
 
     function escapeHTML(str) {
       if (!str) return '';
-      return str.toString().replace(/[&<>"']/g, function(match) {
-        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[match];
-      });
+      return str.toString().replace(/[&<>"']/g, match => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[match]));
     }
 
     function setUploadStatus(msg, isErr = false) {
@@ -247,9 +247,7 @@ textarea.form-control {
     
     function copyText(text) {
         if (!navigator.clipboard) return;
-        navigator.clipboard.writeText(text).then(() => {
-            showToast('Copied to clipboard!');
-        }).catch(err => console.error('Copy failed', err));
+        navigator.clipboard.writeText(text).then(() => showToast('Copied to clipboard!')).catch(err => console.error('Copy failed', err));
     }
 
     function formatTimestamp(dateString) {
@@ -262,14 +260,6 @@ textarea.form-control {
             bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
         while(n--) u8arr[n] = bstr.charCodeAt(n);
         return new File([u8arr], filename, {type:mime});
-    }
-
-    function getExtensionFromMimeType(mimeType) {
-        const mimeMap = {
-            'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp',
-            'application/pdf': '.pdf', 'text/plain': '.txt', 'text/html': '.html',
-        };
-        return mimeMap[mimeType] || '';
     }
     
     // --- CLIPBOARD FEATURE ---
@@ -285,10 +275,7 @@ textarea.form-control {
             listItem.className = 'list-item clipboard-item';
             const titleHTML = msg.title ? `<div class="message-title">${escapeHTML(msg.title)}</div>` : '';
             listItem.innerHTML = `
-                <div class="clipboard-content">
-                    <div class="message-header">${titleHTML}<div class="timestamp">${formatTimestamp(msg.created_at)}</div></div>
-                    <div class="message-body"><pre><code></code></pre></div>
-                </div>
+                <div class="clipboard-content"><div class="message-header">${titleHTML}<div class="timestamp">${formatTimestamp(msg.created_at)}</div></div><div class="message-body"><pre><code></code></pre></div></div>
                 <div class="clipboard-actions"></div>`;
             listItem.querySelector('.message-body code').textContent = msg.content;
             
@@ -351,11 +338,7 @@ textarea.form-control {
             const listItem = document.createElement('li');
             listItem.className = 'list-item';
             const fileUrl = supabase.storage.from('files').getPublicUrl(file.name).data.publicUrl;
-            listItem.innerHTML = `
-                <div class="file-info"><i data-feather="file-text"></i><span></span></div>
-                <div class="file-actions">
-                    <a class="btn btn-primary btn-sm" href="${fileUrl}" title="Download"><i data-feather="download"></i></a>
-                </div>`;
+            listItem.innerHTML = `<div class="file-info"><i data-feather="file-text"></i><span></span></div><div class="file-actions"><a class="btn btn-primary btn-sm" href="${fileUrl}" title="Download"><i data-feather="download"></i></a></div>`;
             listItem.querySelector('.file-info span').textContent = file.name;
 
             const previewBtn = document.createElement('button');
@@ -432,17 +415,13 @@ textarea.form-control {
                  const text = await blob.text();
                  const doc = new DOMParser().parseFromString(text, 'text/html');
                  const img = doc.querySelector('meta[property="og:image"]');
-                 if (img && img.content) {
-                     urlInput.value = img.content;
-                     uploadFileFromUrl(); return;
-                 } else { throw new Error('No direct image found on the page.'); }
+                 if (img && img.content) { urlInput.value = img.content; uploadFileFromUrl(); return; } 
+                 else { throw new Error('No direct image found on the page.'); }
             }
 
             let fileName = response.headers.get('X-Filename');
             if (!fileName || fileName === 'downloaded-file') {
-                 const extension = getExtensionFromMimeType(mimeType);
-                 fileName = url.substring(url.lastIndexOf('/') + 1).split('?')[0] || `file-${Date.now()}${extension}`;
-                 if (fileName && !fileName.includes('.')) fileName += extension;
+                 fileName = url.substring(url.lastIndexOf('/') + 1).split('?')[0] || `file-${Date.now()}`;
             }
             
             const file = new File([blob], fileName, { type: mimeType });
@@ -471,67 +450,61 @@ textarea.form-control {
         else showToast('All files have been deleted.');
     }
 
-    // --- UPDATED: Preview Logic in New Tab ---
+    // --- REWRITTEN: Preview Logic in New Tab ---
     async function showPreview(fileUrl, fileName) {
         const extension = fileName.split('.').pop().toLowerCase();
         const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'];
         const codeExtensions = ['java', 'py', 'c', 'cpp', 'cs', 'rb', 'go', 'js', 'ts', 'html', 'css', 'xml', 'json'];
-        const textExtensions = ['txt', 'md', 'csv'];
+        const textExtensions = ['txt', 'md'];
 
-        const previewTab = window.open('about:blank', '_blank');
-        previewTab.document.write('<html><body style="background-color: #1a1a1a; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: sans-serif;">Loading Preview...</body></html>');
-        previewTab.document.close();
+        const openPreviewTab = (content, isHtml = false) => {
+            const previewTab = window.open('about:blank', '_blank');
+            previewTab.document.write(content);
+            previewTab.document.close();
+        };
+        
+        showToast(`Opening preview for ${fileName}...`);
 
         try {
             if (imageExtensions.includes(extension) || extension === 'pdf') {
-                previewTab.location.href = fileUrl;
+                openPreviewTab(`<iframe src="${fileUrl}" frameborder="0" style="width:100%; height:100vh;"></iframe>`);
             } else if (codeExtensions.includes(extension) || textExtensions.includes(extension)) {
                 const response = await fetch(fileUrl);
                 const text = await response.text();
-                previewTab.document.open();
-                previewTab.document.write(`
-                    <html><head><title>Preview: ${fileName}</title>
-                    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css">
-                    <style>body{margin:0; font-family: monospace;}</style></head>
-                    <body><pre><code class="${extension}">${escapeHTML(text)}</code></pre>
-                    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"><\/script>
-                    <script>hljs.highlightAll();<\/script></body></html>`);
-                previewTab.document.close();
+                const content = `<html><head><title>Preview: ${fileName}</title><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css"><style>body{margin:0; font-family: monospace;}</style></head><body><pre><code class="${extension}">${escapeHTML(text)}</code></pre><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"><\/script><script>hljs.highlightAll();<\/script></body></html>`;
+                openPreviewTab(content);
             } else {
                  const response = await fetch(fileUrl);
                  const fileBlob = await response.blob();
-                 
-                 const reader = new FileReader();
-                 reader.onload = function(event) {
-                     const dataUrl = event.target.result;
-                     previewTab.document.open();
-                     previewTab.document.write(`
-                        <html><head><title>Preview: ${fileName}</title>
-                        <style>body{font-family:sans-serif;background-color:#f0f0f0;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;} #container{width:90%;height:90%;background:white;box-shadow:0 0 10px rgba(0,0,0,0.1);overflow:auto;}</style>
-                        <script src="https://unpkg.com/docx-preview@0.1.15/dist/docx-preview.js"><\/script>
-                        <script src="https://cdn.jsdelivr.net/npm/pptx2html@0.1.1/dist/pptx2html.min.js"><\/script></head>
-                        <body><div id="container">Loading...</div>
-                        <script>
-                            function dataURLtoBlob(dataurl) { var arr=dataurl.split(','),mime=arr[0].match(/:(.*?);/)[1],bstr=atob(arr[1]),n=bstr.length,u8arr=new Uint8Array(n); while(n--)u8arr[n]=bstr.charCodeAt(n); return new Blob([u8arr],{type:mime}); }
-                            const fileBlob = dataURLtoBlob("${dataUrl}");
-                            const container = document.getElementById('container');
-                            if ("${extension}" === "docx") {
-                                docx.renderAsync(fileBlob, container);
-                            } else if ("${extension}" === "pptx") {
-                                pptx2html(fileBlob, container, null, { slide_resolution: "100%" });
-                            } else {
-                                container.innerText = "Preview not available for this file type.";
-                            }
-                        <\/script></body></html>`);
-                     previewTab.document.close();
-                 };
-                 reader.readAsDataURL(fileBlob);
+                 previewRenderContainer.innerHTML = ''; // Clear previous renders
+
+                 let htmlContent = '';
+                 if (extension === 'docx') {
+                     await docx.renderAsync(fileBlob, previewRenderContainer);
+                     htmlContent = previewRenderContainer.innerHTML;
+                 } else if (extension === 'pptx') {
+                     await pptx2html(fileBlob, previewRenderContainer, null, { slide_resolution: "100%" });
+                     htmlContent = previewRenderContainer.innerHTML;
+                 } else if (extension === 'xlsx' || extension === 'csv') {
+                     const data = await fileBlob.arrayBuffer();
+                     const workbook = XLSX.read(data);
+                     const sheetName = workbook.SheetNames[0];
+                     htmlContent = XLSX.utils.sheet_to_html(workbook.Sheets[sheetName]);
+                 }
+
+                 if (htmlContent) {
+                     const content = `<html><head><title>Preview: ${fileName}</title><style>body{font-family:sans-serif;background-color:#f0f0f0;padding:20px;} table{border-collapse:collapse;width:100%;} th,td{border:1px solid #ddd;padding:8px;} th{background-color:#333;color:white;}</style></head><body>${htmlContent}</body></html>`;
+                     openPreviewTab(content, true);
+                 } else {
+                     showToast("Preview not available for this file type.", true);
+                 }
             }
         } catch (error) {
             console.error('Preview error:', error);
-            previewTab.document.body.innerHTML = 'Could not load preview.';
+            showToast(`Could not load preview for ${fileName}.`, true);
         }
     }
+
 
     // --- INITIALIZATION ---
     async function initializeApp() {
