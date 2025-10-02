@@ -156,7 +156,11 @@ textarea.form-control {
       <div id="drop-zone">
         <input id="file-input" type="file" multiple style="display:none">
         <i data-feather="upload" style="width:36px;height:36px"></i>
-        <p style="color:var(--muted);margin:8px 0 0 0">Drag & drop files here, or click to select.</p>
+        <p style="color:var(--muted);margin:8px 0 0 0">Drag & drop, paste, or click to select files.</p>
+      </div>
+      <div style="margin-top: 16px; display: flex; gap: 8px;">
+        <input id="url-input" class="form-control" placeholder="Or enter a file URL...">
+        <button id="url-upload-btn" class="btn btn-primary">Upload</button>
       </div>
       <div id="upload-status" style="margin-top:10px;color:var(--accent);font-size:.9rem"></div>
     </div>
@@ -189,6 +193,8 @@ textarea.form-control {
     const fileList = document.getElementById('fileList');
     const resetFilesBtn = document.getElementById('resetFilesBtn');
     const uploadStatus = document.getElementById('upload-status');
+    const urlInput = document.getElementById('url-input');
+    const urlUploadBtn = document.getElementById('url-upload-btn');
     
     let supabase;
     let currentMessageIndex = -1;
@@ -413,6 +419,32 @@ textarea.form-control {
             setUploadStatus(`Uploaded ${file.name} successfully!`);
         }
     }
+    
+    // NEW: Function to upload files from a URL
+    async function uploadFileFromUrl() {
+        const url = urlInput.value.trim();
+        if (!url) return;
+
+        setUploadStatus('Fetching file from URL...');
+        try {
+            // Using a CORS proxy to fetch the file
+            const response = await fetch(`https://proxy.cors.sh/${url}`);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const blob = await response.blob();
+            const fileName = url.substring(url.lastIndexOf('/') + 1);
+            const file = new File([blob], fileName, { type: blob.type });
+
+            await uploadFile(file);
+            urlInput.value = ''; // Clear input after successful upload
+
+        } catch (error) {
+            setUploadStatus('Failed to fetch file from URL.', true);
+            console.error('URL Fetch Error:', error);
+        }
+    }
 
     async function deleteFile(fileName) {
         const { error } = await supabase.storage.from('files').remove([fileName]);
@@ -486,6 +518,18 @@ textarea.form-control {
                     await Promise.all([...e.dataTransfer.files].map(uploadFile));
                 }
             });
+            
+            // NEW: Event listener for pasting files
+            dropZone.addEventListener('paste', async (e) => {
+                e.preventDefault();
+                if (e.clipboardData.files.length > 0) {
+                    await Promise.all([...e.clipboardData.files].map(uploadFile));
+                }
+            });
+
+            // NEW: Event listener for URL upload button
+            urlUploadBtn.addEventListener('click', uploadFileFromUrl);
+
             resetFilesBtn.addEventListener('click', resetFiles);
             
             // --- Realtime Subscriptions ---
