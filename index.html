@@ -4,9 +4,13 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>CopyCat Serverless</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;5_0;700&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/feather-icons"></script>
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.min.js"></script>
+<script src="https://unpkg.com/docx-preview@0.1.15/dist/docx-preview.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
 
 <style>
 /* --- Styling --- */
@@ -129,6 +133,31 @@ textarea.form-control {
 }
 .toast.success { border-color: var(--success); }
 .toast.error { border-color: var(--danger); }
+/* --- NEW: Preview Modal Styles --- */
+#preview-modal {
+    display: none; position: fixed; z-index: 10000; left: 0; top: 0;
+    width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.8);
+    backdrop-filter: blur(5px);
+}
+#preview-modal-content {
+    background-color: var(--card); color: var(--text);
+    margin: 5% auto; padding: 0; border: 1px solid var(--border);
+    width: 80%; max-width: 900px; border-radius: 16px;
+    display: flex; flex-direction: column;
+}
+#preview-header {
+    padding: 16px 20px; border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+}
+#preview-title { font-weight: 600; }
+#preview-close {
+    color: var(--muted); font-size: 28px; font-weight: bold; cursor: pointer;
+}
+#preview-body { padding: 20px; height: 70vh; overflow-y: auto; }
+#preview-body img { max-width: 100%; height: auto; display: block; margin: auto; }
+#preview-body pre { white-space: pre-wrap; word-wrap: break-word; }
+/* Styles for docx-preview */
+.docx-wrapper { background: white; color: black; padding: 20px; }
 </style>
 </head>
 <body>
@@ -187,6 +216,16 @@ textarea.form-control {
 
 <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
 
+<div id="preview-modal">
+  <div id="preview-modal-content">
+    <div id="preview-header">
+      <span id="preview-title">File Preview</span>
+      <span id="preview-close">&times;</span>
+    </div>
+    <div id="preview-body"></div>
+  </div>
+</div>
+
 <script>
     // --- DOM Elements ---
     const clipboardInput = document.getElementById('clipboardInput');
@@ -207,6 +246,11 @@ textarea.form-control {
     const renameInput = document.getElementById('rename-input');
     const confirmUploadBtn = document.getElementById('confirm-upload-btn');
     const cancelUploadBtn = document.getElementById('cancel-upload-btn');
+    // NEW: Preview Modal elements
+    const previewModal = document.getElementById('preview-modal');
+    const previewTitle = document.getElementById('preview-title');
+    const previewBody = document.getElementById('preview-body');
+    const previewClose = document.getElementById('preview-close');
     
     let supabase;
     let currentMessageIndex = -1;
@@ -349,10 +393,17 @@ textarea.form-control {
                 <div class="file-info"><i data-feather="file-text"></i><span></span></div>
                 <div class="file-actions">
                     <a class="btn btn-primary btn-sm" href="${fileUrl}" title="Download"><i data-feather="download"></i></a>
-                    <a class="btn btn-secondary btn-sm" href="${fileUrl}" target="_blank" title="View"><i data-feather="eye"></i></a>
                 </div>`;
             listItem.querySelector('.file-info span').textContent = file.name;
-            listItem.querySelector('a[title="Download"]').setAttribute('download', file.name);
+
+            // NEW: Add Preview button
+            const previewBtn = document.createElement('button');
+            previewBtn.className = 'btn btn-secondary btn-sm';
+            previewBtn.title = 'Preview';
+            previewBtn.innerHTML = `<i data-feather="eye"></i>`;
+            previewBtn.onclick = () => showPreview(fileUrl, file.name);
+            listItem.querySelector('.file-actions').appendChild(previewBtn);
+            
             const deleteBtn = document.createElement('button');
             deleteBtn.className = 'btn btn-danger btn-sm'; deleteBtn.title = 'Delete';
             deleteBtn.innerHTML = `<i data-feather="trash-2"></i>`; deleteBtn.onclick = () => deleteFile(file.name);
@@ -459,6 +510,66 @@ textarea.form-control {
         else showToast('All files have been deleted.');
     }
 
+    // --- NEW: Preview Logic ---
+    async function showPreview(fileUrl, fileName) {
+        previewTitle.textContent = fileName;
+        previewBody.innerHTML = 'Loading preview...';
+        previewModal.style.display = 'block';
+
+        const extension = fileName.split('.').pop().toLowerCase();
+        const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'];
+        const textExtensions = ['txt', 'md', 'json', 'xml', 'html', 'css', 'js'];
+
+        try {
+            if (imageExtensions.includes(extension)) {
+                previewBody.innerHTML = `<img src="${fileUrl}" alt="${fileName}">`;
+            } else if (textExtensions.includes(extension) || extension === 'csv') {
+                const response = await fetch(fileUrl);
+                const text = await response.text();
+                previewBody.innerHTML = `<pre>${escapeHTML(text)}</pre>`;
+            } else if (extension === 'pdf') {
+                pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.worker.min.js`;
+                const pdf = await pdfjsLib.getDocument(fileUrl).promise;
+                const page = await pdf.getPage(1);
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                const viewport = page.getViewport({ scale: 1.5 });
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+                previewBody.innerHTML = '';
+                previewBody.appendChild(canvas);
+                await page.render({ canvasContext: context, viewport: viewport }).promise;
+            } else if (extension === 'docx') {
+                const response = await fetch(fileUrl);
+                const arrayBuffer = await response.arrayBuffer();
+                docx.renderAsync(arrayBuffer, previewBody);
+            } else if (extension === 'xlsx') {
+                const response = await fetch(fileUrl);
+                const arrayBuffer = await response.arrayBuffer();
+                const workbook = XLSX.read(arrayBuffer, { type: 'buffer' });
+                const sheetName = workbook.SheetNames[0];
+                const sheet = workbook.Sheets[sheetName];
+                previewBody.innerHTML = XLSX.utils.sheet_to_html(sheet);
+            } else if (extension === 'zip') {
+                const response = await fetch(fileUrl);
+                const blob = await response.blob();
+                const zip = await JSZip.loadAsync(blob);
+                let content = '<ul>';
+                zip.forEach((relativePath, zipEntry) => {
+                    content += `<li>${zipEntry.name}</li>`;
+                });
+                content += '</ul>';
+                previewBody.innerHTML = content;
+            } else {
+                previewBody.innerHTML = 'Preview not available for this file type.';
+            }
+        } catch (error) {
+            console.error('Preview error:', error);
+            previewBody.innerHTML = 'Could not load preview.';
+        }
+    }
+
+
     // --- INITIALIZATION ---
     async function initializeApp() {
         try {
@@ -481,13 +592,10 @@ textarea.form-control {
             dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('dragover'); });
             dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); if (e.dataTransfer.files.length > 0) { triggerRename(e.dataTransfer.files[0]); } });
             
-            // NEW: Global Paste Handler
             document.addEventListener('paste', (e) => {
                 const activeElement = document.activeElement;
                 const isTyping = activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA');
-
-                if (isTyping) return; // Let default paste happen in inputs
-
+                if (isTyping) return;
                 e.preventDefault();
                 if (e.clipboardData.files.length > 0) {
                     triggerRename(e.clipboardData.files[0]);
@@ -510,6 +618,10 @@ textarea.form-control {
                 renameContainer.style.display = 'none';
                 showToast("Upload cancelled.", true);
             });
+
+            // Preview Modal Listeners
+            previewClose.onclick = () => { previewModal.style.display = 'none'; };
+            window.onclick = (event) => { if (event.target == previewModal) { previewModal.style.display = 'none'; } };
             
             supabase.channel('public:messages')
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload) => { console.log('Message change received!', payload); fetchMessages(); })
