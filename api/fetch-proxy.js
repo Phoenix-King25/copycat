@@ -19,6 +19,21 @@ module.exports = async (request, response) => {
       return response.status(externalResponse.status).send(externalResponse.statusText);
     }
 
+    // --- NEW: Logic to extract filename ---
+    const contentDisposition = externalResponse.headers.get('content-disposition');
+    let filename = 'downloaded-file'; // Default filename
+
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename="(.+?)"/);
+      if (filenameMatch && filenameMatch[1]) {
+        filename = filenameMatch[1];
+      }
+    }
+    
+    // Pass the extracted filename back to the client in a custom header
+    response.setHeader('X-Filename', filename);
+    // --- End of new logic ---
+
     const contentType = externalResponse.headers.get('Content-Type') || 'application/octet-stream';
     response.setHeader('Content-Type', contentType);
     
