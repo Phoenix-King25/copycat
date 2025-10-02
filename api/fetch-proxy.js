@@ -8,23 +8,27 @@ export default async function handler(request, response) {
   }
 
   try {
-    // Fetch the resource from the provided URL
-    const externalResponse = await fetch(url);
+    const externalResponse = await fetch(url, {
+      // Follow redirects, which is crucial for Google Drive
+      redirect: 'follow', 
+      headers: {
+        // Use a common browser User-Agent to avoid being blocked
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36'
+      }
+    });
 
     if (!externalResponse.ok) {
-      // If the response is not successful, pass on the error
       return response.status(externalResponse.status).send(externalResponse.statusText);
     }
 
-    // Get the content type and pass it along
     const contentType = externalResponse.headers.get('Content-Type') || 'application/octet-stream';
     response.setHeader('Content-Type', contentType);
-
-    // Stream the response body directly to the client
+    
+    // Stream the file back to the browser
     externalResponse.body.pipe(response);
 
   } catch (error) {
-    console.error(error);
-    response.status(500).send('Error fetching the URL');
+    console.error('Proxy Error:', error);
+    response.status(500).send(`Error fetching the URL: ${error.message}`);
   }
 }
