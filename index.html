@@ -364,7 +364,7 @@ textarea.form-control {
         // Scroll the highlighted message into view
         currentMessage.scrollIntoView({
             behavior: 'smooth',
-            block: 'center'
+            block: 'start' // CHANGED: from 'center' to 'start' to align to the top
         });
     }
 
