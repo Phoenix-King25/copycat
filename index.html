@@ -254,6 +254,21 @@ textarea.form-control {
         return new File([u8arr], filename, {type:mime});
     }
 
+    // NEW: Function to get a file extension from a MIME type
+    function getExtensionFromMimeType(mimeType) {
+        const mimeMap = {
+            'image/jpeg': '.jpg',
+            'image/png': '.png',
+            'image/gif': '.gif',
+            'image/webp': '.webp',
+            'application/pdf': '.pdf',
+            'text/plain': '.txt',
+            'text/html': '.html',
+            // Add more mappings as needed
+        };
+        return mimeMap[mimeType] || '';
+    }
+
     // --- CLIPBOARD FEATURE ---
     async function fetchMessages() {
         const { data, error } = await supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(100);
@@ -300,7 +315,7 @@ textarea.form-control {
             deleteBtn.onclick = () => deleteMessage(msg.id);
 
             actionsDiv.appendChild(copyBtn);
-            actionsDiv.appendChild(deleteBtn);
+actionsDiv.appendChild(deleteBtn);
 
             clipboardList.appendChild(listItem);
         });
@@ -418,33 +433,19 @@ textarea.form-control {
         feather.replace();
     }
 
-    // UPDATED: Function to upload a file with a rename prompt
+    // UPDATED: Function to upload a file without a rename prompt
     async function uploadFile(file) {
-        let newName = prompt("Enter a name for the file:", file.name);
-
-        if (newName === null) { // User cancelled the prompt
-            showToast("File upload cancelled.", true);
-            return;
-        }
-
-        newName = newName.trim(); // Remove leading/trailing whitespace
-
-        if (!newName) { // User entered an empty name
-            showToast("File name cannot be empty.", true);
-            return;
-        }
-        
-        setUploadStatus(`Uploading ${newName}...`);
-        const { error } = await supabase.storage.from('files').upload(newName, file, { upsert: true });
+        setUploadStatus(`Uploading ${file.name}...`);
+        const { error } = await supabase.storage.from('files').upload(file.name, file, { upsert: true });
         if (error) {
-            setUploadStatus(`Failed to upload ${newName}.`, true);
+            setUploadStatus(`Failed to upload ${file.name}.`, true);
             console.error('Upload error:', error);
         } else {
-            setUploadStatus(`Uploaded ${newName} successfully!`);
+            setUploadStatus(`Uploaded ${file.name} successfully!`);
         }
     }
     
-    // Function to upload files from a URL or data URL
+    // UPDATED: Function to upload files from a URL with automatic extension detection
     async function uploadFileFromUrl() {
         const url = urlInput.value.trim();
         if (!url) return;
@@ -465,15 +466,28 @@ textarea.form-control {
         // Handle regular URL
         setUploadStatus('Fetching file from URL...');
         try {
-            // Using a more reliable CORS proxy
             const response = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`);
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
 
             const blob = await response.blob();
-            const fileName = url.substring(url.lastIndexOf('/') + 1);
-            const file = new File([blob], fileName, { type: blob.type });
+            const mimeType = blob.type;
+            const extension = getExtensionFromMimeType(mimeType);
+
+            let fileName = url.substring(url.lastIndexOf('/') + 1).split('?')[0]; // Get name from URL and remove query params
+            
+            // If the filename from the URL doesn't have an extension, add one
+            if (fileName && !fileName.includes('.')) { 
+                 fileName += extension;
+            }
+
+            // If the filename is empty (e.g., from a base URL), create a generic name
+            if (!fileName) {
+                fileName = `file-${Date.now()}${extension}`;
+            }
+
+            const file = new File([blob], fileName, { type: mimeType });
 
             await uploadFile(file);
             urlInput.value = ''; // Clear input after successful upload
