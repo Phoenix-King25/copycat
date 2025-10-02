@@ -9,6 +9,7 @@
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
 
@@ -148,6 +149,7 @@ textarea.form-control {
       </div>
       <div id="clipboard-status" style="margin-top:10px;color:var(--muted);font-size:.9rem"></div>
       <div style="margin-top: 16px; text-align: right; display: flex; justify-content: flex-end; gap: 8px;">
+        <button id="syncClipboardBtn" class="btn btn-secondary"><i data-feather="refresh-cw"></i> Sync Clipboard</button>
         <button id="nextMessageBtn" class="btn btn-secondary"><i data-feather="arrow-down"></i> Next Message</button>
         <button id="resetClipboardBtn" class="btn btn-danger"><i data-feather="trash-2"></i> Reset</button>
       </div>
@@ -163,7 +165,7 @@ textarea.form-control {
         <p style="color:var(--muted);margin:8px 0 0 0">Drag & drop, paste, or click to select files.</p>
       </div>
       <div id="rename-container" style="display:none; margin-top: 16px;">
-        <p style="margin: 0 0 8px 0; font-weight: 600;">Rename File:</p>
+        <p id="rename-title" style="margin: 0 0 8px 0; font-weight: 600;">Rename File:</p>
         <div style="display: flex; gap: 8px;">
           <input id="rename-input" class="form-control" placeholder="Enter new file name...">
           <button id="confirm-upload-btn" class="btn btn-primary">Confirm</button>
@@ -209,12 +211,15 @@ textarea.form-control {
     const urlUploadBtn = document.getElementById('url-upload-btn');
     const renameContainer = document.getElementById('rename-container');
     const renameInput = document.getElementById('rename-input');
+    const renameTitle = document.getElementById('rename-title');
     const confirmUploadBtn = document.getElementById('confirm-upload-btn');
     const cancelUploadBtn = document.getElementById('cancel-upload-btn');
+    const syncClipboardBtn = document.getElementById('syncClipboardBtn');
     
     let supabase;
     let currentMessageIndex = -1;
-    let fileToUpload = null;
+    let filesToUploadQueue = [];
+    let lastClipboardText = '';
 
     // --- UTILITY FUNCTIONS ---
     function showToast(message, isError = false) {
@@ -351,8 +356,13 @@ textarea.form-control {
         feather.replace();
     }
     
-    function triggerRename(file) {
-        fileToUpload = file;
+    function processFileQueue() {
+        if (filesToUploadQueue.length === 0) {
+            renameContainer.style.display = 'none';
+            return;
+        }
+        const file = filesToUploadQueue[0];
+        renameTitle.textContent = `Rename File (${filesToUploadQueue.length} remaining):`;
         renameInput.value = file.name;
         renameContainer.style.display = 'block';
         renameInput.focus();
@@ -361,15 +371,15 @@ textarea.form-control {
     async function confirmUpload() {
         const newName = renameInput.value.trim();
         if (!newName) { showToast("File name cannot be empty.", true); return; }
+        
+        const fileToUpload = filesToUploadQueue.shift();
         if (fileToUpload) {
             setUploadStatus(`Uploading ${newName}...`);
             const { error } = await supabase.storage.from('files').upload(newName, fileToUpload, { upsert: true });
             if (error) { setUploadStatus(`Failed to upload ${newName}.`, true); console.error('Upload error:', error); } 
             else { setUploadStatus(`Uploaded ${newName} successfully!`); }
         }
-        fileToUpload = null;
-        renameInput.value = '';
-        renameContainer.style.display = 'none';
+        processFileQueue();
     }
     
     async function uploadFileFromUrl() {
@@ -378,7 +388,9 @@ textarea.form-control {
         if (url.startsWith('data:')) {
             try {
                 const file = dataURLtoFile(url, `pasted-file-${Date.now()}`);
-                triggerRename(file); urlInput.value = '';
+                filesToUploadQueue.push(file);
+                processFileQueue();
+                urlInput.value = '';
             } catch (error) { setUploadStatus('Failed to upload from data URL.', true); console.error('Data URL Error:', error); }
             return;
         }
@@ -419,7 +431,8 @@ textarea.form-control {
             }
             
             const file = new File([blob], fileName, { type: mimeType });
-            triggerRename(file);
+            filesToUploadQueue.push(file);
+            processFileQueue();
             urlInput.value = '';
 
         } catch (error) {
@@ -450,7 +463,7 @@ textarea.form-control {
         const officeExtensions = ['docx', 'docm', 'dotm', 'dotx', 'xlsx', 'xlsb', 'xls', 'xlsm', 'pptx', 'ppsx', 'ppt', 'pps', 'pptm', 'potm', 'ppam', 'potx', 'ppsm'];
         const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'];
         const codeExtensions = ['java', 'py', 'c', 'cpp', 'cs', 'rb', 'go', 'js', 'ts', 'html', 'css', 'xml', 'json', 'sh', 'bat'];
-        const textExtensions = ['txt', 'md', 'rtf'];
+        const textExtensions = ['txt', 'rtf', 'csv', 'md'];
 
         const openPreviewTab = (content) => {
             const previewTab = window.open('about:blank', '_blank');
@@ -466,34 +479,19 @@ textarea.form-control {
                 window.open(officeUrl, '_blank');
             } else if (imageExtensions.includes(extension) || extension === 'pdf') {
                 openPreviewTab(`<body style="margin:0; background-color: #282c34;"><iframe src="${fileUrl}" frameborder="0" style="width:100%; height:100vh;"></iframe></body>`);
-            } else if (codeExtensions.includes(extension) || textExtensions.includes(extension) || extension === 'csv') {
+            } else if (codeExtensions.includes(extension) || textExtensions.includes(extension)) {
                 const response = await fetch(fileUrl);
                 const text = await response.text();
                 let content;
 
                 if (extension === 'csv') {
-                    const rows = text.trim().split('\n').map(row => {
-                        const columns = row.split(',').map(col => `<td>${escapeHTML(col)}</td>`).join('');
-                        return `<tr>${columns}</tr>`;
-                    }).join('');
-                    content = `<html><head><title>Preview: ${fileName}</title><style>body{font-family:monospace;background-color:#282c34;color:#abb2bf;padding:1em;} table{width:100%;border-collapse:collapse;} td,th{border:1px solid #555;padding:8px;text-align:left;} th{background-color:#444;}</style></head><body><table>${rows}</table></body></html>`;
+                    const rows = text.trim().split('\n').map(row => `<tr><td>${row.split(',').join('</td><td>')}</td></tr>`).join('');
+                    content = `<html><head><title>Preview: ${fileName}</title><style>html,body{margin:0;padding:0;height:100%;} body{font-family:monospace;background-color:#282c34;color:#abb2bf;padding:1em;} table{width:100%;border-collapse:collapse;} td,th{border:1px solid #555;padding:8px;text-align:left;} th{background-color:#444;}</style></head><body><table>${rows}</table></body></html>`;
+                } else if (extension === 'md') {
+                    const html = marked.parse(text);
+                    content = `<html><head><title>Preview: ${fileName}</title><style>html,body{margin:0;padding:0;height:100%;} body{font-family:sans-serif;background-color:#282c34;color:#abb2bf;padding:2em;} h1,h2,h3{color:#61afef;} a{color:#98c379;} code{background:#3a3f4b;padding:2px 4px;border-radius:4px;}</style></head><body>${html}</body></html>`;
                 } else {
-                    content = `
-                        <html>
-                            <head>
-                                <title>Preview: ${fileName}</title>
-                                <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css">
-                                <style>
-                                    html, body { margin:0; padding:0; height:100%; font-family: monospace; background-color: #282c34; }
-                                    pre { margin: 1em; }
-                                </style>
-                            </head>
-                            <body>
-                                <pre><code class="${extension}">${escapeHTML(text)}</code></pre>
-                                <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"><\/script>
-                                <script>hljs.highlightAll();<\/script>
-                            </body>
-                        </html>`;
+                    content = `<html><head><title>Preview: ${fileName}</title><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css"><style>html, body { margin:0; padding:0; height:100%; font-family: monospace; background-color: #282c34; } pre { margin: 1em; }</style></head><body><pre><code class="${extension}">${escapeHTML(text)}</code></pre><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"><\/script><script>hljs.highlightAll();<\/script></body></html>`;
                 }
                 openPreviewTab(content);
             } else {
@@ -502,6 +500,30 @@ textarea.form-control {
         } catch (error) {
             console.error('Preview error:', error);
             showToast(`Could not load preview for ${fileName}.`, true);
+        }
+    }
+
+    // --- NEW: Clipboard Sync Logic ---
+    async function syncClipboard() {
+        try {
+            await navigator.clipboard.readText();
+            showToast("Clipboard permission granted. Syncing enabled.");
+            
+            setInterval(async () => {
+                const text = await navigator.clipboard.readText();
+                if (text && text !== lastClipboardText) {
+                    clipboardInput.value = text;
+                    lastClipboardText = text;
+                }
+            }, 1000);
+
+        } catch (error) {
+            if (error.name === 'NotAllowedError') {
+                showToast("Clipboard permission denied.", true);
+            } else {
+                console.error('Clipboard error:', error);
+                showToast("Could not access clipboard.", true);
+            }
         }
     }
 
@@ -522,17 +544,18 @@ textarea.form-control {
             resetClipboardBtn.addEventListener('click', resetClipboard);
             nextMessageBtn.addEventListener('click', selectNextMessage);
             dropZone.addEventListener('click', () => fileInput.click());
-            fileInput.addEventListener('change', (e) => { if (e.target.files.length > 0) { triggerRename(e.target.files[0]); fileInput.value = ''; } });
+            
+            fileInput.addEventListener('change', (e) => { if (e.target.files.length > 0) { filesToUploadQueue.push(...e.target.files); processFileQueue(); fileInput.value = ''; } });
             dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
             dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('dragover'); });
-            dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); if (e.dataTransfer.files.length > 0) { triggerRename(e.dataTransfer.files[0]); } });
+            dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); if (e.dataTransfer.files.length > 0) { filesToUploadQueue.push(...e.dataTransfer.files); processFileQueue(); } });
             
             document.addEventListener('paste', (e) => {
                 const activeElement = document.activeElement;
                 const isTyping = activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA');
                 if (isTyping) return;
                 e.preventDefault();
-                if (e.clipboardData.files.length > 0) { triggerRename(e.clipboardData.files[0]); } 
+                if (e.clipboardData.files.length > 0) { filesToUploadQueue.push(...e.clipboardData.files); processFileQueue(); } 
                 else { const pastedText = (e.clipboardData || window.clipboardData).getData('text'); if (pastedText) { urlInput.value = pastedText; showToast('URL pasted. Click Upload to proceed.'); } }
             });
 
@@ -541,18 +564,17 @@ textarea.form-control {
             
             confirmUploadBtn.addEventListener('click', confirmUpload);
             cancelUploadBtn.addEventListener('click', () => {
-                fileToUpload = null;
-                renameInput.value = '';
-                renameContainer.style.display = 'none';
-                showToast("Upload cancelled.", true);
+                filesToUploadQueue.shift();
+                processFileQueue();
             });
+            
+            syncClipboardBtn.addEventListener('click', syncClipboard);
             
             supabase.channel('public:messages')
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload) => { console.log('Message change received!', payload); fetchMessages(); })
                 .subscribe((status) => { if (status === 'SUBSCRIBED') console.log('Connected to realtime channel!'); });
             setInterval(fetchFiles, 5000);
-        } catch (error)
- {
+        } catch (error) {
             console.error('Failed to initialize the application:', error);
             document.body.innerHTML = '<h1 style="color:red; text-align:center; margin-top: 50px;">Application failed to load. Check console for errors.</h1>';
         }
