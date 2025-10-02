@@ -159,7 +159,7 @@ textarea.form-control {
         <p style="color:var(--muted);margin:8px 0 0 0">Drag & drop, paste, or click to select files.</p>
       </div>
       <div style="margin-top: 16px; display: flex; gap: 8px;">
-        <input id="url-input" class="form-control" placeholder="Or enter a file URL...">
+        <input id="url-input" class="form-control" placeholder="Or enter a file URL or data URL...">
         <button id="url-upload-btn" class="btn btn-primary">Upload</button>
       </div>
       <div id="upload-status" style="margin-top:10px;color:var(--accent);font-size:.9rem"></div>
@@ -242,6 +242,16 @@ textarea.form-control {
     function formatTimestamp(dateString) {
         const date = new Date(dateString);
         return date.toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
+    }
+    
+    // NEW: Function to convert data URL to File object
+    function dataURLtoFile(dataurl, filename) {
+        var arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1],
+            bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
+        while(n--){
+            u8arr[n] = bstr.charCodeAt(n);
+        }
+        return new File([u8arr], filename, {type:mime});
     }
 
     // --- CLIPBOARD FEATURE ---
@@ -420,15 +430,29 @@ textarea.form-control {
         }
     }
     
-    // NEW: Function to upload files from a URL
+    // UPDATED: Function to upload files from a URL or data URL
     async function uploadFileFromUrl() {
         const url = urlInput.value.trim();
         if (!url) return;
+        
+        // Handle data URL
+        if (url.startsWith('data:')) {
+            try {
+                const file = dataURLtoFile(url, `pasted-file-${Date.now()}`);
+                await uploadFile(file);
+                urlInput.value = '';
+            } catch (error) {
+                setUploadStatus('Failed to upload from data URL.', true);
+                console.error('Data URL Error:', error);
+            }
+            return;
+        }
 
+        // Handle regular URL
         setUploadStatus('Fetching file from URL...');
         try {
-            // Using a CORS proxy to fetch the file
-            const response = await fetch(`https://proxy.cors.sh/${url}`);
+            // Using a more reliable CORS proxy
+            const response = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`);
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -510,7 +534,7 @@ textarea.form-control {
                 }
             });
             dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
-            dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+            dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('dragover'); });
             dropZone.addEventListener('drop', async (e) => {
                 e.preventDefault();
                 dropZone.classList.remove('dragover');
