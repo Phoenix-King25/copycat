@@ -339,7 +339,7 @@ body {
 
             // Step 2: Initialize Supabase client
             // The global 'Supabase' object is loaded from the self-hosted supabase.js file
-            supabase = supabase.createClient(config.url, config.key);
+            supabase = window.supabase.createClient(config.url, config.key);
             
             // Step 3: Now that Supabase is ready, load data and set up listeners
             await fetchMessages();
