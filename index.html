@@ -254,7 +254,7 @@ textarea.form-control {
         return new File([u8arr], filename, {type:mime});
     }
 
-    // NEW: Function to get a file extension from a MIME type
+    // Function to get a file extension from a MIME type
     function getExtensionFromMimeType(mimeType) {
         const mimeMap = {
             'image/jpeg': '.jpg',
@@ -264,11 +264,10 @@ textarea.form-control {
             'application/pdf': '.pdf',
             'text/plain': '.txt',
             'text/html': '.html',
-            // Add more mappings as needed
         };
         return mimeMap[mimeType] || '';
     }
-
+    
     // --- CLIPBOARD FEATURE ---
     async function fetchMessages() {
         const { data, error } = await supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(100);
@@ -315,7 +314,7 @@ textarea.form-control {
             deleteBtn.onclick = () => deleteMessage(msg.id);
 
             actionsDiv.appendChild(copyBtn);
-actionsDiv.appendChild(deleteBtn);
+            actionsDiv.appendChild(deleteBtn);
 
             clipboardList.appendChild(listItem);
         });
@@ -433,7 +432,7 @@ actionsDiv.appendChild(deleteBtn);
         feather.replace();
     }
 
-    // UPDATED: Function to upload a file without a rename prompt
+    // Function to upload a file
     async function uploadFile(file) {
         setUploadStatus(`Uploading ${file.name}...`);
         const { error } = await supabase.storage.from('files').upload(file.name, file, { upsert: true });
@@ -445,10 +444,18 @@ actionsDiv.appendChild(deleteBtn);
         }
     }
     
-    // UPDATED: Function to upload files from a URL with automatic extension detection
+    // UPDATED: Function to upload files from a URL with special handling for Google Drive and HTML pages
     async function uploadFileFromUrl() {
-        const url = urlInput.value.trim();
+        let url = urlInput.value.trim();
         if (!url) return;
+
+        // Handle Google Drive links
+        if (url.includes("drive.google.com")) {
+            const match = url.match(/file\/d\/(.+?)\//);
+            if (match && match[1]) {
+                url = `https://drive.google.com/uc?export=download&id=${match[1]}`;
+            }
+        }
         
         // Handle data URL
         if (url.startsWith('data:')) {
@@ -473,16 +480,28 @@ actionsDiv.appendChild(deleteBtn);
 
             const blob = await response.blob();
             const mimeType = blob.type;
-            const extension = getExtensionFromMimeType(mimeType);
-
-            let fileName = url.substring(url.lastIndexOf('/') + 1).split('?')[0]; // Get name from URL and remove query params
             
-            // If the filename from the URL doesn't have an extension, add one
+            // If the content is an HTML page, try to find an image in it
+            if (mimeType === 'text/html') {
+                 const text = await blob.text();
+                 const doc = new DOMParser().parseFromString(text, 'text/html');
+                 const img = doc.querySelector('img');
+                 if (img && img.src) {
+                     urlInput.value = img.src; // Set the input to the found image source
+                     uploadFileFromUrl(); // And run the function again
+                     return;
+                 } else {
+                     throw new Error('No image found on the page.');
+                 }
+            }
+
+            const extension = getExtensionFromMimeType(mimeType);
+            let fileName = url.substring(url.lastIndexOf('/') + 1).split('?')[0];
+            
             if (fileName && !fileName.includes('.')) { 
                  fileName += extension;
             }
 
-            // If the filename is empty (e.g., from a base URL), create a generic name
             if (!fileName) {
                 fileName = `file-${Date.now()}${extension}`;
             }
@@ -490,7 +509,7 @@ actionsDiv.appendChild(deleteBtn);
             const file = new File([blob], fileName, { type: mimeType });
 
             await uploadFile(file);
-            urlInput.value = ''; // Clear input after successful upload
+            urlInput.value = '';
 
         } catch (error) {
             setUploadStatus('Failed to fetch file from URL.', true);
