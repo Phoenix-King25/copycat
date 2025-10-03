@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>CopyCats</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/feather-icons"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+
+<style>
+/* --- Styling --- */
+:root {
+  --font: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --bg: #000000;
+  --card: #111111;
+  --border: #2a2a2a;
+  --text: #e5e7eb;
+  --muted: #9ca3af;
+  --accent: #0ea5e9;
+  --accent-hover: #38bdf8;
+  --success: #22c55e;
+  --danger: #ef4444;
+  --danger-hover: #f87171;
+  --btn-secondary-bg: #333333;
+  --btn-secondary-hover: #444444;
+  --shadow-color: rgba(0, 0, 0, 0.7);
+  --shadow-accent-glow: rgba(14, 165, 233, 0.3);
+  --highlight-bg: rgba(14, 165, 233, 0.15);
+  --transition-fast: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { font-size: 16px; scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  padding: 24px;
+}
+.container {
+  max-width: 980px;
+  margin: auto;
+  display: grid;
+  gap: 24px;
+}
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 10px 30px var(--shadow-color);
+  overflow: hidden;
+}
+.card-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.card-body { padding: 20px; }
+.btn {
+  border: none; padding: 10px 16px; border-radius: 10px; cursor: pointer; font-weight: 600;
+  font-family: var(--font); display: inline-flex; align-items: center; justify-content: center;
+  gap: 8px; transition: var(--transition-fast); box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+.btn:hover { transform: translateY(-1px); box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+.btn:active { transform: translateY(0); }
+.btn:disabled { cursor: not-allowed; opacity: 0.6; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+.btn-secondary { background: var(--btn-secondary-bg); color: var(--text); }
+.btn-secondary:hover:not(:disabled) { background: var(--btn-secondary-hover); }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover:not(:disabled) { background: var(--danger-hover); }
+.btn-sm { padding: 6px 10px; font-size: 0.875rem; border-radius: 8px; }
+.form-control {
+  background: #000000; border: 1px solid var(--border); padding: 10px 14px;
+  border-radius: 10px; color: var(--text); width: 100%; font-family: var(--font);
+  transition: var(--transition-fast);
+}
+.form-control:focus {
+  outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--shadow-accent-glow);
+}
+textarea.form-control {
+  resize: vertical;
+  min-height: 45px;
+  line-height: 1.5;
+}
+#drop-zone {
+  border: 2px dashed var(--border); padding: 32px; border-radius: 12px; text-align: center;
+  color: var(--muted); transition: var(--transition-fast); cursor: pointer;
+}
+#drop-zone:hover { border-color: var(--accent); color: var(--accent); background: rgba(14, 165, 233, 0.05); }
+#drop-zone.dragover {
+  border-color: var(--accent); border-style: solid; color: var(--accent);
+  background: rgba(14, 165, 233, 0.1); transform: scale(1.02);
+}
+.list-item {
+  display: flex; justify-content: space-between; align-items: center; padding: 12px;
+  border-radius: 10px; margin-bottom: 10px; border: 1px solid var(--border);
+  transition: var(--transition-fast);
+}
+.list-item:hover { border-color: var(--accent); transform: translateY(-2px); }
+.list-item.highlighted {
+  border-color: var(--accent);
+  box-shadow: 0 0 15px var(--shadow-accent-glow);
+}
+.file-list { list-style: none; padding: 0; margin: 0; }
+.file-info { display: flex; align-items: center; gap: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 60%; }
+.file-actions { display: flex; gap: 8px; align-items: center; }
+#clipboard-list { max-height: 460px; overflow-y: auto; padding-right: 8px; }
+.clipboard-item { align-items: flex-start; }
+.clipboard-content { flex: 1; min-width: 0; }
+.message-header { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+.message-title { font-weight: 600; font-size: 1.05rem; color: var(--text); }
+.timestamp { color: var(--muted); font-size: 0.875rem; white-space: nowrap; }
+.message-body { word-wrap: break-word; color: var(--text); line-height: 1.5; }
+.message-body pre { margin: 0; white-space: pre-wrap; }
+.message-body pre, .message-body code { font-family: monospace; font-size: 0.9rem; }
+.clipboard-actions { display: flex; flex-direction: column; gap: 8px; margin-left: 12px; align-items: flex-end; }
+#toast-container { position: fixed; right: 24px; top: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 12px; }
+.toast {
+  min-width: 250px; padding: 12px 16px; border-radius: 10px; color: #fff; background: rgba(20, 20, 20, 0.7);
+  backdrop-filter: blur(5px); box-shadow: 0 10px 30px var(--shadow-color); display: flex;
+  align-items: center; justify-content: space-between; border-left: 4px solid;
+}
+.toast.success { border-color: var(--success); }
+.toast.error { border-color: var(--danger); }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="card">
+    <div class="card-header"><i data-feather="clipboard"></i> Shared Clipboard</div>
+    <div class="card-body">
+      <div id="clipboard-list" aria-live="polite"></div>
+      <input id="clipboardTitleInput" class="form-control" placeholder="Optional Title..." style="margin-top:12px; margin-bottom: 8px;">
+      <div style="display:flex;gap:8px;">
+        <textarea id="clipboardInput" class="form-control" placeholder="Type text to share..." rows="3"></textarea>
+        <button id="shareBtn" class="btn btn-primary" title="Share"><i data-feather="send"></i></button>
+      </div>
+      <div id="clipboard-status" style="margin-top:10px;color:var(--muted);font-size:.9rem"></div>
+      <div style="margin-top: 16px; text-align: right; display: flex; justify-content: flex-end; gap: 8px;">
+        <button id="nextMessageBtn" class="btn btn-secondary"><i data-feather="arrow-down"></i> Next Message</button>
+        <button id="resetClipboardBtn" class="btn btn-danger"><i data-feather="trash-2"></i> Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><i data-feather="upload-cloud"></i> File Hub</div>
+    <div class="card-body">
+      <div id="drop-zone">
+        <input id="file-input" type="file" multiple style="display:none">
+        <i data-feather="upload" style="width:36px;height:36px"></i>
+        <p style="color:var(--muted);margin:8px 0 0 0">Drag & drop, paste, or click to select files.</p>
+      </div>
+      <div id="rename-container" style="display:none; margin-top: 16px;">
+        <p id="rename-title" style="margin: 0 0 8px 0; font-weight: 600;"></p>
+        <div style="display: flex; gap: 8px;">
+          <input id="rename-input" class="form-control" placeholder="Enter new file name...">
+          <button id="confirm-upload-btn" class="btn btn-primary">Confirm</button>
+          <button id="cancel-upload-btn" class="btn btn-secondary">Cancel</button>
+        </div>
+      </div>
+      <div style="margin-top: 16px; display: flex; gap: 8px;">
+        <input id="url-input" class="form-control" placeholder="Or enter a file URL or data URL...">
+        <button id="url-upload-btn" class="btn btn-primary">Upload</button>
+      </div>
+      <div id="upload-status" style="margin-top:10px;color:var(--accent);font-size:.9rem"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><i data-feather="hard-drive"></i> Available Files</div>
+    <div class="card-body">
+      <ul id="fileList" class="file-list"></ul>
+      <div style="margin-top:16px;text-align:right">
+        <button id="resetFilesBtn" class="btn btn-danger"><i data-feather="trash-2"></i> Reset All Files</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
