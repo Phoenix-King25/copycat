@@ -1,5 +1,11 @@
 const fetch = require('node-fetch');
 
+const ALLOWED_DOMAINS = [
+    'drive.google.com',
+    'docs.google.com',
+    // Add other domains you want to allow here
+];
+
 module.exports = async (request, response) => {
   const { url } = request.query;
 
@@ -8,6 +14,11 @@ module.exports = async (request, response) => {
   }
 
   try {
+    const { hostname } = new URL(url);
+    if (!ALLOWED_DOMAINS.some(domain => hostname.endsWith(domain))) {
+      return response.status(403).send('Domain not allowed');
+    }
+
     const externalResponse = await fetch(url, {
       redirect: 'follow',
       headers: {
@@ -29,14 +40,14 @@ module.exports = async (request, response) => {
         filename = filenameMatch[1];
       }
     }
-    
+
     // Pass the extracted filename back to the client in a custom header
     response.setHeader('X-Filename', filename);
     // --- End of new logic ---
 
     const contentType = externalResponse.headers.get('Content-Type') || 'application/octet-stream';
     response.setHeader('Content-Type', contentType);
-    
+
     externalResponse.body.pipe(response);
 
   } catch (error) {
