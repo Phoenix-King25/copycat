@@ -24,6 +24,7 @@ const renameInput = document.getElementById('rename-input');
 const renameTitle = document.getElementById('rename-title');
 const confirmUploadBtn = document.getElementById('confirm-upload-btn');
 const cancelUploadBtn = document.getElementById('cancel-upload-btn');
+const clipboardSearchInput = document.getElementById('clipboardSearchInput');
 
 let supabase;
 let currentMessageIndex = -1;
@@ -72,6 +73,25 @@ function dataURLtoFile(dataurl, filename) {
     return new File([u8arr], filename, {type:mime});
 }
 
+function filterMessages() {
+    const searchTerm = clipboardSearchInput.value.toLowerCase();
+    const messages = clipboardList.querySelectorAll('.list-item.clipboard-item');
+    
+    messages.forEach(message => {
+        const titleElement = message.querySelector('.message-title');
+        const contentElement = message.querySelector('.message-body code');
+        
+        const title = titleElement ? titleElement.textContent.toLowerCase() : '';
+        const content = contentElement ? contentElement.textContent.toLowerCase() : '';
+        
+        if (title.includes(searchTerm) || content.includes(searchTerm)) {
+            message.style.display = ''; // Show the message
+        } else {
+            message.style.display = 'none'; // Hide the message
+        }
+    });
+}
+
 // --- CLIPBOARD FEATURE ---
 async function fetchMessages() {
     const { data, error } = await supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(100);
@@ -100,6 +120,7 @@ async function fetchMessages() {
         clipboardList.appendChild(listItem);
     });
     feather.replace();
+    filterMessages();
 }
 
 async function shareMessage() {
@@ -368,6 +389,7 @@ async function initializeApp() {
         resetClipboardBtn.addEventListener('click', resetClipboard);
         nextMessageBtn.addEventListener('click', selectNextMessage);
         dropZone.addEventListener('click', () => fileInput.click());
+        clipboardSearchInput.addEventListener('keyup', filterMessages);
 
         fileInput.addEventListener('change', (e) => { if (e.target.files.length > 0) { filesToUploadQueue.push(...e.target.files); processFileQueue(); fileInput.value = ''; } });
         dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
@@ -404,18 +426,20 @@ async function initializeApp() {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload) => { console.log('Message change received!', payload); fetchMessages(); })
             .subscribe((status) => { if (status === 'SUBSCRIBED') console.log('Connected to realtime message channel!'); });
 
-        supabase.channel('storage-changes')
+        // Listen for any new row in the 'notifications' table
+        supabase.channel('public:notifications')
             .on('postgres_changes', { 
-                event: '*', 
-                schema: 'storage', 
-                table: 'objects' 
+                event: 'INSERT', 
+                schema: 'public', 
+                table: 'notifications' 
             }, (payload) => {
-                console.log('File change received!', payload);
+                console.log('File change detected via notification table!', payload);
+                // When a notification is received, refresh the file list
                 fetchFiles();
             })
             .subscribe((status) => {
                 if (status === 'SUBSCRIBED') {
-                    console.log('Connected to realtime file channel!');
+                    console.log('Connected to notifications channel for file updates!');
                 }
             });
 
