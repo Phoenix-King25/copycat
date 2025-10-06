@@ -404,9 +404,20 @@ async function initializeApp() {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload) => { console.log('Message change received!', payload); fetchMessages(); })
             .subscribe((status) => { if (status === 'SUBSCRIBED') console.log('Connected to realtime message channel!'); });
 
-        supabase.channel('public:files')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'objects' }, (payload) => { console.log('File change received!', payload); fetchFiles(); })
-            .subscribe((status) => { if (status === 'SUBSCRIBED') console.log('Connected to realtime file channel!'); });
+        supabase.channel('storage-changes')
+            .on('postgres_changes', { 
+                event: '*', 
+                schema: 'storage', 
+                table: 'objects' 
+            }, (payload) => {
+                console.log('File change received!', payload);
+                fetchFiles();
+            })
+            .subscribe((status) => {
+                if (status === 'SUBSCRIBED') {
+                    console.log('Connected to realtime file channel!');
+                }
+            });
 
     } catch (error) {
         console.error('Failed to initialize the application:', error);
