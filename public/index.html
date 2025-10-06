@@ -11,7 +11,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
-
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
 <style>
@@ -142,9 +141,11 @@ textarea.form-control {
   <div class="card">
     <div class="card-header"><i data-feather="clipboard"></i> Shared Clipboard</div>
     <div class="card-body">
-      <div style="margin-bottom: 16px;">
-        <input id="clipboardSearchInput" class="form-control" placeholder="Search clipboard...">
+      <div style="position: relative; margin-bottom: 16px;">
+        <i data-feather="search" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--muted); width: 18px; height: 18px;"></i>
+        <input id="clipboardSearchInput" class="form-control" placeholder="Search clipboard..." style="padding-left: 40px;">
       </div>
+
       <div id="clipboard-list" aria-live="polite"></div>
       <input id="clipboardTitleInput" class="form-control" placeholder="Optional Title..." style="margin-top:12px; margin-bottom: 8px;">
       <div style="display:flex;gap:8px;">
